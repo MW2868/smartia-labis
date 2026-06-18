@@ -1,0 +1,10 @@
+[build]
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/"
+  to = "/SmartIA_Labis_v2.html"
+  status = 200
+
+[functions]
+  node_bundler = "esbuild"
