@@ -752,8 +752,10 @@ function copyCode(id){
 </div>
 
 <script>
-pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-pdfjsLib.verbosity=0;
+if(typeof pdfjsLib !== 'undefined'){
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  pdfjsLib.verbosity=0;
+}
 
 /* Global state */
 var laudoText='', refsTexts=[], links=[], lastAnalysis=null, bioChart=null;
@@ -2005,7 +2007,10 @@ function copyAssessmentLink(){
   });
 }
 
-document.getElementById('share-modal').addEventListener('click',function(e){if(e.target===this)closeShare();});
+document.addEventListener('DOMContentLoaded', function(){
+  var sm = document.getElementById('share-modal');
+  if(sm) sm.addEventListener('click', function(e){if(e.target===this) closeShare();});
+});
 
 </script>
 </body>
