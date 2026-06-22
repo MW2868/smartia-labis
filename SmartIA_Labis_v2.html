@@ -675,7 +675,7 @@ async function extractPdfText(file){
   const high=sorted.filter(p=>p.score>=3).map(p=>p.text);
   const low=sorted.filter(p=>p.score<3).map(p=>p.text);
   const combined=[...high,...low].join('\n');
-  return combined.substring(0,6500).trim();
+  return combined.substring(0,3000).trim();
 }
 
 function scorePageRelevance(text){
@@ -929,20 +929,20 @@ INSTRUÇÃO ESPECIAL: A análise deve ser direcionada especificamente para um m�
 Analise o laudo de ${typeLabels[currentType]} abaixo e retorne JSON válido (sem markdown, sem texto fora do JSON).
 
 LAUDO (texto extraído por relevância clínica):
-${laudoText.substring(0,6500)}${patientInfo}${assessCtx}
+${laudoText.substring(0,3000)}${patientInfo}${assessCtx}
 ${refsContext}${linksContext}
 
-Retorne EXATAMENTE este JSON:
+Retorne EXATAMENTE este JSON (seja conciso em cada campo — máximo 2 frases por texto):
 {
   "tipo_exame": "nome do exame",
   "paciente_idade": null,
-  "sumario_original": "resumo em 1-2 frases dos achados",
+  "sumario_original": "resumo em 1 frase",
   "parametros": [
     {
       "nome": "Nome",
       "valor": "valor",
       "unidade": "unidade",
-      "referencia": "min-max ou faixa",
+      "referencia": "faixa",
       "referencia_min": null,
       "referencia_max": null,
       "status": "normal|alto|baixo|critico|presente|ausente|alterado|adequado|reduzido|aumentado",
@@ -961,7 +961,7 @@ Retorne EXATAMENTE este JSON:
     "wbc_thou": null,
     "age": null
   },
-  "interpretacao_geral": "interpretação clínica detalhada mín 3 frases",
+  "interpretacao_geral": "interpretação clínica em 2-3 frases objetivas",
   "achados_relevantes": [
     {"titulo":"Achado","descricao":"Descrição detalhada","nivel":"alto|medio|baixo"}
   ],
@@ -1114,7 +1114,7 @@ async function analyze(){
       },
       body:JSON.stringify({
         model:'claude-sonnet-4-6',
-        max_tokens:8192,
+        max_tokens:4096,
         messages:[{role:'user',content:buildPrompt()}]
       })
     });
