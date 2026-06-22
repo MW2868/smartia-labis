@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+'+(s.nivel_num>0?'<div class="organ-bar"><div class="organ-bar-fill" style="width:'+s.nivel_num+'%;background:'+(nivelColor[nk]||'var(--gray-400)')+'">'+'</div></div>':'')+'<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -287,6 +287,122 @@ function goTo(p){
   var el=document.getElementById('page-'+p);
   if(el){el.classList.add('active');}
   window.scrollTo(0,0);
+}
+
+var currentType='clinica';
+var currentSubtype='intestinal';
+
+function selectType(t,el){
+  currentType=t;
+  document.querySelectorAll('.type-btn').forEach(function(b){b.classList.remove('selected');});
+  el.classList.add('selected');
+  var sr=document.getElementById('subtype-row');
+  if(sr){sr.classList.toggle('visible',t==='microbiota');}
+}
+
+function selectSubtype(s,el){
+  currentSubtype=s;
+  document.querySelectorAll('.subtype-pill').forEach(function(p){p.classList.remove('selected');});
+  el.classList.add('selected');
+}
+
+function switchTab(tab,el){
+  document.querySelectorAll('.doc-tab').forEach(function(t){t.classList.remove('active');});
+  document.querySelectorAll('.tab-content').forEach(function(c){c.classList.remove('active');});
+  el.classList.add('active');
+  var tc=document.getElementById('tab-'+tab);
+  if(tc){tc.classList.add('active');}
+}
+
+function updateApiStatus(){
+  var k=document.getElementById('api-key-input');
+  var s=document.getElementById('api-status');
+  if(!k||!s) return;
+  if(k.value.trim().startsWith('sk-ant')){
+    s.textContent='Configurada ✓';s.className='api-status ok';
+  } else {
+    s.textContent='Não configurada';s.className='api-status empty';
+  }
+}
+
+function validateCRM(input){
+  var val=input.value.trim().toUpperCase().replace(/\s/g,'');
+  var valid=/^\d{5,6}\/[A-Z]{2}$/.test(val);
+  var hint=document.getElementById('crm-hint');
+  if(!hint) return;
+  if(!val){hint.style.display='none';return;}
+  if(valid){hint.textContent='✓ CRM válido';hint.style.color='var(--success-dark)';}
+  else{hint.textContent='Formato: 123456/SP';hint.style.color='var(--warning-dark)';}
+  hint.style.display='block';
+}
+
+function openShare(){document.getElementById('share-modal').classList.add('visible');}
+function closeShare(){document.getElementById('share-modal').classList.remove('visible');}
+
+function addLink(){
+  var input=document.getElementById('link-input');
+  var url=input.value.trim();
+  if(!url||!url.startsWith('http')) return;
+  if(!window._links) window._links=[];
+  window._links.push(url);
+  renderLinks();
+  input.value='';
+}
+
+function renderLinks(){
+  var list=document.getElementById('links-list');
+  if(!list||!window._links) return;
+  list.innerHTML=window._links.map(function(l,i){
+    return '<div class="ref-tag">🔗 '+(l.length>40?l.substring(0,40)+'…':l)+
+    ' <button onclick="removeLink('+i+')">×</button></div>';
+  }).join('');
+}
+
+function removeLink(i){
+  if(window._links){window._links.splice(i,1);renderLinks();}
+}
+
+function generateAssessmentLink(){
+  var patNome=document.getElementById('patient-nome')?document.getElementById('patient-nome').value.trim():'';
+  var base=window.location.href.replace(/[^/]*$/,'')+' SmartIA_Assessment.html';
+  base=window.location.href.replace(/[^/]*$/,'')+'SmartIA_Assessment.html';
+  var params=new URLSearchParams();
+  if(patNome) params.set('paciente',patNome);
+  var fullLink=base+'?'+params.toString();
+  var lr=document.getElementById('link-result');
+  var lt=document.getElementById('link-text');
+  if(lr) lr.style.display='block';
+  if(lt) lt.textContent=fullLink;
+  var msg='Olá'+(patNome?' '+patNome:'')+'! 👋
+
+O Labis Life Diagnostics preparou um breve questionário de saúde.
+
+Acesse: '+fullLink+'
+
+Ao final nos envie o arquivo JSON gerado. 🙏';
+  var wa=document.getElementById('link-wa');
+  var em=document.getElementById('link-email');
+  if(wa) wa.href='https://wa.me/?text='+encodeURIComponent(msg);
+  if(em) em.href='mailto:?subject=Assessment SmartIA&body='+encodeURIComponent(msg);
+}
+
+function copyAssessmentLink(){
+  var link=document.getElementById('link-text');
+  if(!link) return;
+  navigator.clipboard.writeText(link.textContent).then(function(){
+    event.target.textContent='✓ Copiado!';
+    setTimeout(function(){event.target.textContent='📋 Copiar';},2000);
+  });
+}
+
+function copyCode(id){
+  var val=document.getElementById(id).textContent;
+  navigator.clipboard.writeText(val).then(function(){
+    var btn=event.target;
+    var orig=btn.textContent;
+    btn.textContent='✓ Copiado!';
+    setTimeout(function(){btn.textContent=orig;},2000);
+  });
 }
 </script>
 </head>
@@ -639,97 +755,146 @@ function goTo(p){
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 pdfjsLib.verbosity=0;
 
-let currentType='clinica',currentSubtype='intestinal';
-let laudoText='',refsTexts=[],links=[],lastAnalysis=null,bioChart=null;
-let assessmentData=null;
+/* Global state */
+var laudoText='', refsTexts=[], links=[], lastAnalysis=null, bioChart=null;
+var assessmentData=null;
 
-function goTo(p){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.getElementById('page-'+p).classList.add('active');window.scrollTo(0,0)}
-
-function updateApiStatus(){
-  const k=document.getElementById('api-key-input').value.trim();
-  const s=document.getElementById('api-status');
-  if(k.startsWith('sk-ant')){s.textContent='Configurada ✓';s.className='api-status ok'}
-  else{s.textContent='Não configurada';s.className='api-status empty'}
-}
-
-function selectType(t,el){
-  currentType=t;
-  document.querySelectorAll('.type-btn').forEach(b=>b.classList.remove('selected'));
-  el.classList.add('selected');
-  document.getElementById('subtype-row').classList.toggle('visible',t==='microbiota');
-}
-function selectSubtype(s,el){
-  currentSubtype=s;
-  document.querySelectorAll('.subtype-pill').forEach(p=>p.classList.remove('selected'));
-  el.classList.add('selected');
-}
-
+/* ── PDF EXTRACTION ── */
 async function extractPdfText(file){
-  const buf=await file.arrayBuffer();
-  const pdf=await pdfjsLib.getDocument({data:buf,verbosity:0,isEvalSupported:false}).promise;
-  const totalPages=pdf.numPages;
-  const pageTexts=[];
-  for(let i=1;i<=Math.min(totalPages,30);i++){
-    const page=await pdf.getPage(i);
-    const c=await page.getTextContent();
-    const t=c.items.map(s=>s.str).join(' ').trim();
+  var buf=await file.arrayBuffer();
+  var pdf=await pdfjsLib.getDocument({data:buf,verbosity:0,isEvalSupported:false}).promise;
+  var totalPages=pdf.numPages;
+  var pageTexts=[];
+  for(var i=1;i<=Math.min(totalPages,30);i++){
+    var page=await pdf.getPage(i);
+    var c=await page.getTextContent();
+    var t=c.items.map(function(s){return s.str;}).join(' ').trim();
     pageTexts.push({page:i,text:t,score:scorePageRelevance(t)});
   }
-  const sorted=[...pageTexts].sort((a,b)=>b.score-a.score);
-  const combined=[...sorted].map(p=>p.text).join('\n');
+  var sorted=pageTexts.slice().sort(function(a,b){return b.score-a.score;});
+  var combined=sorted.map(function(p){return p.text;}).join('\n');
   return combined.substring(0,3000).trim();
 }
 
 function scorePageRelevance(text){
-  let score=0;
+  var score=0;
   if(/\d+[,.]\d+\s*(mg|ng|ug|pg|μg|mmol|mEq|U\/L|g\/dL|%|fL|pg\/mL|uUI|log)/i.test(text)) score+=4;
-  if(/valor[es]?\s+de\s+refer[eê]ncia|referência/i.test(text)) score+=2;
-  if(/hemograma|colesterol|glicose|creatinina|ferritina|tsh|vitamina|testosterona|insulina|ureia|triglicérides|lactobacillus|gardnerella|mycoplasma/i.test(text)) score+=2;
-  if(/resultado|result:|normal|alto|baixo|dentro|acima|abaixo|detectado|log/i.test(text)) score+=1;
-  if(/conferido por|assinado digitalmente|telefone|whatsapp|cnpj|cnes|página/i.test(text)) score-=1;
+  if(/valor[es]?\s+de\s+refer[eê]ncia/i.test(text)) score+=2;
+  if(/hemograma|colesterol|glicose|creatinina|ferritina|tsh|vitamina|testosterona|lactobacillus|gardnerella/i.test(text)) score+=2;
+  if(/resultado|normal|alto|baixo|detectado/i.test(text)) score+=1;
+  if(/conferido por|assinado digitalmente|telefone|cnpj/i.test(text)) score-=1;
   return score;
 }
 
 async function handleLaudo(input){
-  const file=input.files[0];if(!file) return;
-  document.getElementById('laudo-name').textContent='⏳ Lendo…';
+  var file=input.files[0]; if(!file) return;
+  document.getElementById('laudo-name').textContent='Lendo…';
   document.getElementById('zone-laudo').classList.add('has-file');
-  try{laudoText=await extractPdfText(file);document.getElementById('laudo-name').textContent='✓ '+file.name}
-  catch(e){document.getElementById('laudo-name').textContent='⚠ Erro ao ler PDF';laudoText=''}
+  try{laudoText=await extractPdfText(file);document.getElementById('laudo-name').textContent='✓ '+file.name;}
+  catch(e){document.getElementById('laudo-name').textContent='Erro ao ler PDF';laudoText='';}
 }
 
 async function handleRefs(input){
   refsTexts=[];
-  const files=Array.from(input.files);
-  document.getElementById('refs-count').textContent=`⏳ Lendo ${files.length} arquivo(s)…`;
+  var files=Array.from(input.files);
+  document.getElementById('refs-count').textContent='Lendo '+files.length+' arquivo(s)…';
   document.getElementById('zone-refs').classList.add('has-file');
-  for(const f of files){try{const t=await extractPdfText(f);refsTexts.push({name:f.name,text:t.substring(0,2000)})}catch(e){}}
-  document.getElementById('refs-count').textContent=`✓ ${refsTexts.length} referência(s) carregada(s)`;
+  for(var fi=0;fi<files.length;fi++){
+    try{var t=await extractPdfText(files[fi]);refsTexts.push({name:files[fi].name,text:t.substring(0,2000)});}catch(e){}
+  }
+  document.getElementById('refs-count').textContent='✓ '+refsTexts.length+' referência(s) carregada(s)';
 }
 
-function addLink(){
-  const input=document.getElementById('link-input');
-  const url=input.value.trim();
-  if(!url||!url.startsWith('http')) return;
-  links.push(url);renderLinks();input.value='';
-}
-function renderLinks(){
-  document.getElementById('links-list').innerHTML=links.map((l,i)=>`
-    <div class="ref-tag">🔗 ${l.length>40?l.substring(0,40)+'…':l}
-    <button onclick="removeLink(${i})">×</button></div>`).join('');
-}
-function removeLink(i){links.splice(i,1);renderLinks()}
 function showError(msg){
-  const box=document.getElementById('error-box');
+  var box=document.getElementById('error-box');
   box.textContent=msg;box.classList.add('visible');
-  setTimeout(()=>box.classList.remove('visible'),8000);
+  setTimeout(function(){box.classList.remove('visible');},8000);
 }
 
-/* ══════════════════════════════════════════
-   SCORES TYPE-AWARE: clínica / genética / microbiota
-   ══════════════════════════════════════════ */
+/* ── SCORE HELPERS ── */
+function scoreClass(score){
+  if(score===null||score===undefined) return {text:'sc-good',bar:'bg-good',val:'st-na'};
+  if(score>=75) return {text:'sc-good',bar:'bg-good',val:'st-good'};
+  if(score>=45) return {text:'sc-mod',bar:'bg-mod',val:'st-mod'};
+  return {text:'sc-bad',bar:'bg-bad',val:'st-bad'};
+}
+function scoreLabel(score){
+  if(score===null||score===undefined) return 'N/D';
+  if(score>=75) return 'Bom';
+  if(score>=45) return 'Moderado';
+  return 'Atenção';
+}
+function statusClass(status){
+  var s=(status||'').toLowerCase();
+  if(['alto','aumentado','critico'].includes(s)) return 'val-hi';
+  if(['baixo','reduzido'].includes(s)) return 'val-lo';
+  return 'val-ok';
+}
+function badgeClass(status){
+  var s=(status||'').toLowerCase();
+  if(['alto','aumentado','critico'].includes(s)) return 'badge-hi';
+  if(['baixo','reduzido'].includes(s)) return 'badge-lo';
+  return 'badge-ok';
+}
 
-// ── GENETIC LIFESTYLE SCORES ──
+
+function calcPhenoAge(p){
+  // Levine et al. 2018 — PhenoAge biological age formula
+  // Inputs: albumin(g/dL), creatinine(mg/dL), glucose(mg/dL), crp(mg/L),
+  //         lymphocyte_pct(%), mcv(fL), rdw(%), alkaline_phosphatase(U/L),
+  //         wbc(thou/uL), age(years)
+  if(!p || !p.age) return null;
+  
+  var alb  = parseFloat(p.albumin)      || 4.0;   // default normal
+  var cre  = parseFloat(p.creatinine)   || null;
+  var glu  = parseFloat(p.glucose)      || null;
+  var crp  = parseFloat(p.crp)          || null;
+  var lymp = parseFloat(p.lymphocyte_pct)|| null;
+  var mcv  = parseFloat(p.mcv)          || null;
+  var rdw  = parseFloat(p.rdw)          || null;
+  var alp  = parseFloat(p.alkaline_phosphatase) || 70;
+  var wbc  = parseFloat(p.wbc)          || null;
+  var age  = parseFloat(p.age);
+  
+  // Need at least age + 2 biomarkers
+  var available = [cre,glu,crp,lymp,mcv,rdw,wbc].filter(function(x){return x!==null;}).length;
+  if(available < 2) return null;
+  
+  // Use defaults for missing values (population medians)
+  if(cre  === null) cre  = 0.9;
+  if(glu  === null) glu  = 87;
+  if(crp  === null) crp  = 0.6;
+  if(lymp === null) lymp = 28;
+  if(mcv  === null) mcv  = 89;
+  if(rdw  === null) rdw  = 13;
+  if(wbc  === null) wbc  = 6.0;
+  
+  // Convert CRP from mg/L to mg/dL for formula
+  var crp_log = Math.log(crp / 10 + 0.001);
+  
+  // Levine 2018 coefficients
+  var xb = -19.9067
+    + (-0.0336  * alb)
+    + (0.0095   * cre)
+    + (0.1953   * glu / 18)   // convert to mmol/L
+    + (0.0954   * crp_log)
+    + (-0.0120  * lymp)
+    + (0.0268   * mcv)
+    + (0.3306   * rdw)
+    + (0.00188  * alp)
+    + (0.0554   * wbc)
+    + (0.0804   * age);
+  
+  var gamma = 0.0076927;
+  var mortality = 1 - Math.exp(-Math.exp(xb) * ((Math.exp(gamma * 120) - 1) / gamma));
+  var phenoAge = Math.round((Math.log(-0.00553 * Math.log(1 - mortality)) / 0.0076927 + 141.50) * 10) / 10;
+  
+  // Clamp to reasonable range
+  phenoAge = Math.max(age - 20, Math.min(age + 25, phenoAge));
+  
+  return isNaN(phenoAge) ? null : phenoAge;
+}
+
 function calcGeneticScores(analysis){
   const raw = analysis.scores_geneticos || [];
   if(raw.length > 0) return raw;
@@ -1038,6 +1203,61 @@ const loadingMsgs=[
 
 /* ── ANALYZE ── */
 /* ── ANALYZE ── */
+function parseJsonRobust(raw){
+  // 1. Try direct parse first
+  try{ return JSON.parse(raw) } catch(e1){}
+
+  // 2. Try to find the outermost { } block
+  const start = raw.indexOf('{');
+  if(start === -1) throw new Error('Nenhum JSON encontrado na resposta');
+  
+  // Walk from end, trying progressively shorter strings until valid JSON
+  let end = raw.lastIndexOf('}');
+  while(end > start){
+    try{
+      const candidate = raw.substring(start, end+1);
+      return JSON.parse(candidate);
+    } catch(e){ end = raw.lastIndexOf('}', end-1); }
+  }
+
+  // 3. Try auto-closing truncated JSON
+  const partial = raw.substring(start);
+  const autoClose = autoCloseJson(partial);
+  try{ return JSON.parse(autoClose) } catch(e2){}
+
+  throw new Error('JSON Parse error: resposta truncada — tente novamente');
+}
+
+function autoCloseJson(s){
+  // Count open structures and close them
+  const stack=[];
+  let inStr=false, escape=false;
+  for(let i=0;i<s.length;i++){
+    const c=s[i];
+    if(escape){escape=false;continue}
+    if(c==='\\' && inStr){escape=true;continue}
+    if(c==='"'){inStr=!inStr;continue}
+    if(inStr) continue;
+    if(c==='{') stack.push('}');
+    else if(c==='[') stack.push(']');
+    else if(c==='}' || c===']') stack.pop();
+  }
+  // Remove trailing comma if present before closing
+  let result=s.replace(/,\s*$/, '');
+  if(inStr) result+='"';  // close open string
+  return result + stack.reverse().join('');
+}
+
+
+const loadingMsgs=[
+  'Lendo o laudo e extraindo biomarcadores…',
+  'Calculando PhenoAge (Levine et al. 2018)…',
+  'Avaliando scores por sistema orgânico…',
+  'Gerando interpretação clínica enriquecida…',
+  'Elaborando perspectiva preventiva…',
+  'Finalizando o documento SmartIA…'
+];
+
 async function analyze(){
   const apiKey=document.getElementById('api-key-input').value.trim();
   if(!apiKey.startsWith('sk-ant')) return showError('Configure a chave de API da Anthropic antes de continuar.');
@@ -1105,495 +1325,36 @@ async function analyze(){
 
 
 
-const loadingMsgs=[
-  'Lendo o laudo e extraindo biomarcadores…',
-  'Calculando PhenoAge (Levine et al. 2018)…',
-  'Avaliando scores por sistema orgânico…',
-  'Gerando interpretação clínica enriquecida…',
-  'Elaborando perspectiva preventiva…',
-  'Finalizando o documento SmartIA…'
-];
-
-/* ── HELPERS ── */
-function statusClass(s){
-  if(['alto','aumentado','presente','alterado','critico'].includes(s)) return 'val-hi';
-  if(['baixo','reduzido','ausente'].includes(s)) return 'val-lo';
-  return 'val-ok';
-}
-function badgeClass(s){
-  if(['alto','aumentado','presente','alterado','critico'].includes(s)) return 'badge-hi';
-  if(['baixo','reduzido','ausente'].includes(s)) return 'badge-lo';
-  return 'badge-ok';
-}
-function barClass(s){
-  if(['alto','aumentado','critico'].includes(s)) return 'bar-fill bg-bad';
-  if(['baixo','reduzido'].includes(s)) return 'bar-fill' ;
-  return 'bar-fill bg-good';
-}
-function nivelColor(n){return n==='alto'?'#B84040':n==='medio'?'#C4820A':'#2E8B6E'}
-function prioColor(p){return p==='alta'?'#B84040':p==='media'?'#C4820A':'#2E8B6E'}
-function scoreClass(s){
-  if(s===null) return {val:'st-na',bar:'',text:'sc-bad'};
-  if(s>=60) return {val:'st-good',bar:'bg-good',text:'sc-good'};
-  if(s>=40) return {val:'st-mod', bar:'bg-mod', text:'sc-mod'};
-  return {val:'st-bad',bar:'bg-bad',text:'sc-bad'};
-}
-function scoreLabel(s){
-  if(s===null) return 'Dados insuf.';
-  if(s>=60) return 'Bom';
-  if(s>=40) return 'Moderado';
-  return 'Atenção';
-}
-
-/* ── RENDER ── */
-function renderResult(a){
-  const typeLabels={clinica:'Análise clínica',genetica:'Genética/genômica',microbiota:'Microbiota '+currentSubtype};
-  const profNomeR  = document.getElementById('prof-nome')?.value.trim()||'';
-  const profCrmR   = document.getElementById('prof-crm')?.value.trim()||'';
-  const profEspecR = document.getElementById('prof-especialidade')?.value||'';
-  const patNomeR   = document.getElementById('patient-nome')?.value.trim()||'';
-  const patSexR    = document.getElementById('patient-sex')?.value||'';
-  const patAgeR    = document.getElementById('patient-age')?.value||'';
-
-  document.getElementById('meta-tipo').innerHTML=`<strong>${typeLabels[currentType]}</strong> · ${a.tipo_exame}`;
-  document.getElementById('meta-data').textContent=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
-  document.getElementById('meta-ref').textContent=`SmartIA · Ref: LAB-${Date.now().toString().slice(-6)}`;
-
-  // Inject professional + patient into doc header
-  const headerRight = document.getElementById('doc-header-info');
-  if(headerRight){
-    let infoHtml = '';
-    if(patNomeR) infoHtml += `<div><strong style="color:var(--gray-800)">${patNomeR}</strong>${patSexR?' · '+patSexR:''}${patAgeR?' · '+patAgeR+' anos':''}</div>`;
-    if(profNomeR) infoHtml += `<div>Solicitante: <strong style="color:var(--gray-800)">${profNomeR}</strong>${profCrmR?' · '+profCrmR:''}</div>`;
-    if(profEspecR) infoHtml += `<div style="color:var(--teal-dark);font-size:11px">${profEspecR}</div>`;
-    headerRight.innerHTML = infoHtml || headerRight.innerHTML;
-  }
-
-  renderPhenoAge(a);
-  renderOriginal(a);
-  renderScores(a);
-  renderEnriched(a);
-  renderLifestyle(a);
-  prepareShare(a);
-}
-
-function renderPhenoAge(a){
-  const band=document.getElementById('phenoage-band');
-  if(currentType!=='clinica'||!a._phenoAge){band.style.display='none';return}
-  band.style.display='grid';
-  const chrono=a._chronoAge;
-  const pheno=a._phenoAge;
-  const delta=pheno&&chrono?Math.round((pheno-chrono)*10)/10:null;
-
-  document.getElementById('h-chrono').textContent=chrono||'—';
-  const phenoEl=document.getElementById('h-pheno');
-  phenoEl.textContent=pheno||'—';
-  if(delta!==null){
-    phenoEl.className='hm-val '+(delta>2?'alert':delta<-2?'good':'');
-    document.getElementById('h-delta').textContent=(delta>0?'+':'')+delta;
-    document.getElementById('h-delta').className='hm-val '+(delta>2?'alert':delta<-2?'good':'');
-    document.getElementById('h-pheno-sub').textContent='anos estimados';
-    const sub=document.getElementById('h-delta-sub');
-    if(delta>2){sub.textContent='anos acima do esperado';sub.className='hm-sub alert'}
-    else if(delta<-2){sub.textContent='anos abaixo — ótimo!';sub.className='hm-sub'}
-    else{sub.textContent='dentro do esperado';sub.className='hm-sub'}
-    const needle=document.getElementById('gauge-needle');
-    const pct=Math.max(5,Math.min(95,50+(delta*8)));
-    needle.style.left=pct+'%';
-    const profile=document.getElementById('h-aging-profile');
-    if(delta>3){profile.textContent='Envelhecimento acelerado';profile.className='hm-sub alert'}
-    else if(delta>0){profile.textContent='Levemente acima da média';profile.className='hm-sub warn'}
-    else{profile.textContent='Envelhecimento saudável';profile.className='hm-sub'}
-  }
-}
-
-function renderOriginal(a){
-  let html='';
-  if(a.sumario_original){
-    html+=`<div style="background:var(--teal-pale);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:1.25rem;font-size:13px;color:var(--teal-deeper);line-height:1.6"><strong>Sumário:</strong> ${a.sumario_original}</div>`;
-  }
-  if(a.parametros&&a.parametros.length>0){
-    html+=`<div class="section-label" style="margin-bottom:.75rem">Parâmetros identificados</div>
-    <table class="param-table"><thead><tr>
-      <th>Parâmetro</th><th>Valor</th><th>Referência</th><th>Posição</th><th>Status</th>
-    </tr></thead><tbody>`;
-    a.parametros.forEach(p=>{
-      const pct=Math.min(Math.max(p.barra_pct||50,5),100);
-      const bc=barClass(p.status||'normal');
-      html+=`<tr>
-        <td><span class="param-name">${p.nome}</span><span class="param-unit">${p.unidade||''}</span></td>
-        <td class="${statusClass(p.status||'normal')}">${p.valor}</td>
-        <td style="font-size:12px;color:var(--gray-400)">${p.referencia||'—'}</td>
-        <td><div class="bar-wrap"><div class="${bc}" style="width:${pct}%;background:${p.status==='baixo'||p.status==='reduzido'?'var(--teal)':p.status==='normal'||p.status==='adequado'?'var(--success)':'var(--danger)'}"></div></div></td>
-        <td><span class="badge ${badgeClass(p.status||'normal')}">${p.status||'—'}</span></td>
-      </tr>`;
-    });
-    html+='</tbody></table>';
-    if(a._phenoAge){
-      html+=`<div class="phenoage-ref">PhenoAge calculado localmente pelo modelo de Levine et al. (Nature Aging, 2018) com os biomarcadores extraídos deste laudo. Estimativa informativa — não constitui diagnóstico.</div>`;
-    }
-  } else {
-    html+=`<p style="font-size:13px;color:var(--gray-600);padding:1rem 0">Os parâmetros foram processados e estão detalhados nas abas de scores e análise enriquecida.</p>`;
-  }
-  document.getElementById('original-content').innerHTML=html;
-}
-
-function renderScores(a){
-  // Route to the correct score renderer based on exam type
-  if(currentType === 'genetica'){
-    renderGeneticScores(a); return;
-  }
-  if(currentType === 'microbiota'){
-    renderMicrobiotaScores(a); return;
-  }
-  // default: clinical organ scores
-  renderClinicalScores(a);
-}
-
-function renderClinicalScores(a){
-  const scores=a._organScores||[];
-
-  // Organ grid
-  let orgHtml=`<div class="section-label">Scores por sistema orgânico</div><div class="organ-grid">`;
-  scores.forEach(org=>{
-    const sc=scoreClass(org.score);
-    const scoreDisplay=org.score!==null?org.score+'%':'—';
-    orgHtml+=`<div class="organ-card">
-      <div class="organ-icon">${org.icon}</div>
-      <div class="organ-name">${org.label}</div>
-      <div class="organ-score-val ${sc.text}">${scoreDisplay}</div>
-      <div class="organ-bar"><div class="organ-bar-fill ${sc.bar}" style="width:${org.score||0}%"></div></div>
-      <span class="organ-status ${sc.val}">${scoreLabel(org.score)}</span>
-    </div>`;
-  });
-  orgHtml+='</div>';
-  document.getElementById('organ-content').innerHTML=orgHtml;
-
-  // KPI grid
-  let kpiHtml=`<div class="section-label">KPIs de risco — visão rápida</div><div class="kpi-grid">`;
-  const kpis=a.kpis||[];
-  if(kpis.length>0){
-    kpis.slice(0,8).forEach(k=>{
-      const badgeCls=k.status==='critico'?'badge-hi':k.status==='atencao'?'badge'+' kpi-badge" style="background:var(--warning-bg);color:var(--warning)':'badge-ok';
-      const valColor=k.status==='critico'?'var(--danger)':k.status==='atencao'?'var(--warning)':'var(--success)';
-      kpiHtml+=`<div class="kpi-card">
-        <div class="kpi-icon">${k.icone||'📊'}</div>
-        <div class="kpi-val" style="color:${valColor}">${k.valor}</div>
-        <div class="kpi-name">${k.nome}${k.unidade?' ('+k.unidade+')':''}</div>
-        <span class="kpi-badge ${k.status==='critico'?'badge-hi':k.status==='atencao'?'':'badge-ok'}" style="${k.status==='atencao'?'background:var(--warning-bg);color:var(--warning)':''}">${k.status==='critico'?'⚠ Investigar':k.status==='atencao'?'Limítrofe':'✓ Normal'}</span>
-      </div>`;
-    });
-  } else {
-    kpiHtml+=`<div style="grid-column:1/-1;font-size:13px;color:var(--gray-400);padding:.5rem 0">KPIs extraídos automaticamente do laudo.</div>`;
-  }
-  kpiHtml+='</div>';
-  document.getElementById('kpi-content').innerHTML=kpiHtml;
-
-  // Biomarker impact chart
-  const bms=a.biomarcadores_impacto||[];
-  let chartHtml=`<div class="section-label">Impacto dos biomarcadores</div>`;
-  if(bms.length>0){
-    chartHtml+=`<div class="chart-legend">
-      <span><span class="legend-dot" style="background:#2E8B6E"></span>Anti-aging (reduz risco)</span>
-      <span><span class="legend-dot" style="background:#B84040"></span>Pró-envelhecimento (aumenta risco)</span>
-    </div>
-    <div style="position:relative;width:100%;height:${Math.max(200,bms.length*36)}px">
-      <canvas id="bm-chart" role="img" aria-label="Gráfico de impacto dos biomarcadores no envelhecimento biológico"></canvas>
-    </div>`;
-    document.getElementById('chart-content').innerHTML=chartHtml;
-    setTimeout(()=>{
-      const ctx=document.getElementById('bm-chart');
-      if(!ctx) return;
-      if(bioChart){bioChart.destroy();bioChart=null}
-      const labels=bms.map(b=>b.nome);
-      const vals=bms.map(b=>b.tipo==='aging'?b.impacto_pct:-b.impacto_pct);
-      const colors=vals.map(v=>v>0?'#B84040':'#2E8B6E');
-      bioChart=new Chart(ctx,{
-        type:'bar',
-        data:{
-          labels,
-          datasets:[{
-            label:'Impacto (%)',
-            data:vals,
-            backgroundColor:colors,
-            borderRadius:4,
-            borderSkipped:false
-          }]
-        },
-        options:{
-          indexAxis:'y',
-          responsive:true,
-          maintainAspectRatio:false,
-          plugins:{legend:{display:false},tooltip:{callbacks:{label:(c)=>`${c.raw>0?'Envelhecimento':' Anti-aging'}: ${Math.abs(c.raw).toFixed(1)}%`}}},
-          scales:{
-            x:{grid:{color:'rgba(0,0,0,.06)'},ticks:{callback:v=>Math.abs(v)+'%'}},
-            y:{grid:{display:false},ticks:{font:{size:11}}}
-          }
-        }
-      });
-    },100);
-  } else {
-    chartHtml+=`<p style="font-size:13px;color:var(--gray-400)">Dados de impacto de biomarcadores não disponíveis para este tipo de laudo.</p>`;
-    document.getElementById('chart-content').innerHTML=chartHtml;
-  }
-}
-
-function renderGeneticScores(a){
-  const scores = calcGeneticScores(a);
-
-  // Genetic scores grid
-  let html = `<div class="organ-section">
-    <div class="section-label">Predisposição genética — perfil de estilo de vida</div>
-    <div class="organ-grid" style="grid-template-columns:repeat(3,1fr)">`;
-
-  const nivelColors = {
-    'baixa':'#0F6E56','moderada':'#2A6B7C','aumentada':'#C4820A','alta':'#B84040',
-    'não avaliado':'#94A8B0'
-  };
-  const nivelBg = {
-    'baixa':'#E8F5F1','moderada':'#EAF5F8','aumentada':'#FEF5E4','alta':'#FDEAEA',
-    'não avaliado':'#EEF2F4'
-  };
-
-  scores.forEach(s => {
-    const nivel = (s.nivel||'não avaliado').toLowerCase().replace('predisposição ','').split(' ')[0];
-    const nivelLabel = s.nivel || 'não avaliado';
-    const cor = nivelColors[nivel] || nivelColors['não avaliado'];
-    const bg  = nivelBg[nivel]    || nivelBg['não avaliado'];
-    const pct = s.nivel_num || 0;
-    html += `<div class="organ-card">
-      <div class="organ-icon" style="font-size:18px">${s.icon||'🧬'}</div>
-      <div class="organ-name">${s.label}</div>
-      <div class="organ-score-val" style="color:${cor};font-size:13px;margin-top:2px">${nivelLabel}</div>
-      ${pct>0?`<div class="organ-bar" style="margin:6px 0 4px"><div class="organ-bar-fill" style="width:${pct}%;background:${cor}"></div></div>`:''}
-      <span class="organ-status" style="background:${bg};color:${cor}">${s.descricao||''}</span>
-    </div>`;
-  });
-  html += `</div></div>`;
-  document.getElementById('organ-content').innerHTML = html;
-
-  // KPI: highlight top findings
-  const alertas = scores.filter(s=>['alta','aumentada'].includes((s.nivel||'').toLowerCase().replace('predisposição ','')));
-  let kpiHtml = `<div class="section-label">Achados mais relevantes</div><div class="kpi-grid">`;
-  if(alertas.length > 0){
-    alertas.slice(0,4).forEach(s=>{
-      kpiHtml += `<div class="kpi-card">
-        <div class="kpi-icon">${s.icon||'🧬'}</div>
-        <div class="kpi-val" style="font-size:14px;color:#B84040">${s.nivel}</div>
-        <div class="kpi-name">${s.label}</div>
-        <span class="kpi-badge badge-hi">Atenção</span>
-      </div>`;
-    });
-  } else {
-    kpiHtml += `<div style="grid-column:1/-1;font-size:13px;color:var(--gray-400);padding:.5rem 0">Nenhuma predisposição elevada identificada nos dados do laudo.</div>`;
-  }
-  kpiHtml += `</div>`;
-  document.getElementById('kpi-content').innerHTML = kpiHtml;
-
-  // No biomarker chart for genetics — show gene table instead
-  const genes = scores.filter(s=>s.genes_encontrados && s.genes_encontrados.length>0);
-  let chartHtml = `<div class="section-label">Variantes identificadas no laudo</div>`;
-  if(a.variantes_encontradas && a.variantes_encontradas.length > 0){
-    chartHtml += `<table class="param-table"><thead><tr>
-      <th>Gene / variante</th><th>Alelo</th><th>Implicação</th><th>Evidência</th>
-    </tr></thead><tbody>`;
-    a.variantes_encontradas.forEach(v=>{
-      chartHtml += `<tr>
-        <td><span class="param-name">${v.gene||'—'}</span></td>
-        <td style="font-family:monospace;font-size:12px">${v.alelo||'—'}</td>
-        <td style="font-size:12px;color:var(--gray-600)">${v.implicacao||'—'}</td>
-        <td><span class="badge ${v.evidencia==='alta'?'badge-hi':v.evidencia==='media'?'badge-lo':'badge-ok'}">${v.evidencia||'—'}</span></td>
-      </tr>`;
-    });
-    chartHtml += `</tbody></table>`;
-  } else {
-    chartHtml += `<p style="font-size:13px;color:var(--gray-400)">Variantes serão listadas quando o laudo genético for processado.</p>`;
-  }
-  document.getElementById('chart-content').innerHTML = chartHtml;
-}
-
-function renderMicrobiotaScores(a){
-  let scores;
-  if(currentSubtype==='vaginal') scores = calcMicrobiotaVaginalScores(a);
-  else if(currentSubtype==='seminal') scores = calcMicrobiotaSeminalScores(a);
-  else scores = calcMicrobiotaIntestinalScores(a);
-
-  const nivelColor = {
-    'baixo':'#0F6E56','moderado':'#C4820A','alto':'#B84040','muito alto':'#8B0000',
-    'não avaliado':'#94A8B0','ótimo':'#0F6E56','bom':'#2A6B7C','disbiose leve':'#C4820A','disbiose':'#B84040'
-  };
-  const nivelBg = {
-    'baixo':'#E8F5F1','moderado':'#FEF5E4','alto':'#FDEAEA','muito alto':'#F5E0E0',
-    'não avaliado':'#EEF2F4','ótimo':'#E8F5F1','bom':'#EAF5F8','disbiose leve':'#FEF5E4','disbiose':'#FDEAEA'
-  };
-
-  const subtypeLabels = {vaginal:'Febiome vaginal',seminal:'Microbiota seminal',intestinal:'Microbiota intestinal',oral:'Microbiota oral',cutânea:'Microbiota cutânea'};
-
-  let html = `<div class="organ-section">
-    <div class="section-label">Scores de risco clínico — ${subtypeLabels[currentSubtype]||'microbiota'}</div>
-    <div class="organ-grid" style="grid-template-columns:repeat(${scores.length<=4?2:3},1fr)">`;
-
-  scores.forEach(s => {
-    const nk = (s.nivel||'não avaliado').toLowerCase();
-    const cor = nivelColor[nk] || '#94A8B0';
-    const bg  = nivelBg[nk]   || '#EEF2F4';
-    const pct = s.nivel_num || 0;
-    html += `<div class="organ-card">
-      <div class="organ-icon" style="font-size:18px">${s.icon||'🔬'}</div>
-      <div class="organ-name">${s.label}</div>
-      <div class="organ-score-val" style="color:${cor};font-size:13px;font-weight:500;margin-top:2px">${s.nivel||'—'}</div>
-      ${pct>0?`<div class="organ-bar" style="margin:6px 0 4px"><div class="organ-bar-fill" style="width:${pct}%;background:${cor}"></div></div>`:''}
-      ${s.cepas_relevantes?`<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px">${s.cepas_relevantes.slice(0,3).map(c=>`<span style="font-size:10px;padding:1px 5px;border-radius:8px;background:var(--gray-100);color:var(--gray-600)">${c}</span>`).join('')}</div>`:''}
-    </div>`;
-  });
-  html += `</div></div>`;
-  document.getElementById('organ-content').innerHTML = html;
-
-  // KPI: abundâncias-chave
-  const kpis = a.kpis || [];
-  let kpiHtml = `<div class="section-label">Cepas e abundâncias-chave</div><div class="kpi-grid">`;
-  if(kpis.length > 0){
-    kpis.slice(0,6).forEach(k=>{
-      const valColor = k.status==='critico'?'var(--danger)':k.status==='atencao'?'var(--warning)':'var(--success)';
-      kpiHtml += `<div class="kpi-card">
-        <div class="kpi-icon">${k.icone||'🔬'}</div>
-        <div class="kpi-val" style="color:${valColor};font-size:16px">${k.valor}</div>
-        <div class="kpi-name">${k.nome}${k.unidade?' ('+k.unidade+')':''}</div>
-        <span class="kpi-badge ${k.status==='critico'?'badge-hi':k.status==='atencao'?'':'badge-ok'}" style="${k.status==='atencao'?'background:var(--warning-bg);color:var(--warning)':''}">${k.status==='critico'?'Atenção':k.status==='atencao'?'Verificar':'✓ OK'}</span>
-      </div>`;
-    });
-  } else {
-    kpiHtml += `<div style="grid-column:1/-1;font-size:13px;color:var(--gray-400)">Abundâncias das cepas disponíveis após processamento do laudo.</div>`;
-  }
-  kpiHtml += `</div>`;
-  document.getElementById('kpi-content').innerHTML = kpiHtml;
-
-  // Biomarker chart — cepa abundance bars
-  const bms = a.biomarcadores_impacto || [];
-  let chartHtml = `<div class="section-label">Perfil microbiano — impacto por cepa</div>`;
-  if(bms.length > 0 && window.Chart){
-    chartHtml += `<div class="chart-legend">
-      <span><span class="legend-dot" style="background:#2E8B6E"></span>Protetora</span>
-      <span><span class="legend-dot" style="background:#B84040"></span>Disruptora / patobionte</span>
-    </div>
-    <div style="position:relative;width:100%;height:${Math.max(180,bms.length*34)}px">
-      <canvas id="bm-chart" role="img" aria-label="Gráfico de abundância das cepas microbianas"></canvas>
-    </div>`;
-    document.getElementById('chart-content').innerHTML = chartHtml;
-    setTimeout(()=>{
-      const ctx = document.getElementById('bm-chart');
-      if(!ctx) return;
-      if(bioChart){bioChart.destroy();bioChart=null;}
-      const labels = bms.map(b=>b.nome);
-      const vals   = bms.map(b=>b.tipo==='aging'?b.impacto_pct:-b.impacto_pct);
-      const colors = bms.map(b=>b.tipo==='aging'?'#B84040':'#2E8B6E');
-      bioChart = new Chart(ctx,{
-        type:'bar',
-        data:{labels,datasets:[{label:'Abundância relativa (%)',data:vals,backgroundColor:colors,borderRadius:4,borderSkipped:false}]},
-        options:{
-          indexAxis:'y',responsive:true,maintainAspectRatio:false,
-          plugins:{legend:{display:false},tooltip:{callbacks:{label:(c)=>`${c.raw>0?'Disruptora':'Protetora'}: ${Math.abs(c.raw).toFixed(1)}%`}}},
-          scales:{x:{grid:{color:'rgba(0,0,0,.06)'},ticks:{callback:v=>Math.abs(v)+'%'}},y:{grid:{display:false},ticks:{font:{size:11}}}}
-        }
-      });
-    },100);
-  } else {
-    document.getElementById('chart-content').innerHTML = chartHtml + `<p style="font-size:13px;color:var(--gray-400)">Perfil de cepas disponível após processamento do laudo de microbiota.</p>`;
-  }
-}
-
-function renderEnriched(a){
-  let html=`<div class="enriched-header">
-    <div class="enriched-title">Análise clínica enriquecida</div>
-    <span class="ai-badge">SmartIA · Baseada em evidências</span>
-  </div>`;
-  html+=`<div class="insight-card">
-    <div class="insight-header"><div class="insight-dot" style="background:var(--teal)"></div><div class="insight-label" style="color:var(--teal-dark)">Interpretação geral</div></div>
-    <div class="insight-body">${a.interpretacao_geral||'—'}</div>
-  </div>`;
-  if(a.achados_relevantes?.length>0){
-    html+=`<div class="insight-card">
-      <div class="insight-header"><div class="insight-dot" style="background:#C4820A"></div><div class="insight-label" style="color:#854F0B">Achados relevantes</div></div>
-      <div class="risk-grid">`;
-    a.achados_relevantes.forEach(ach=>{
-      html+=`<div class="risk-item"><div class="risk-dot" style="background:${nivelColor(ach.nivel)}"></div><div><strong style="color:var(--gray-800)">${ach.titulo}</strong><br>${ach.descricao}</div></div>`;
-    });
-    html+=`</div></div>`;
-  }
-  if(a.perspectiva_preventiva){
-    html+=`<div class="insight-card">
-      <div class="insight-header"><div class="insight-dot" style="background:var(--purple)"></div><div class="insight-label" style="color:var(--purple)">Perspectiva preventiva</div></div>
-      <div class="insight-body">${a.perspectiva_preventiva}</div>
-    </div>`;
-  }
-  if(a.sinalizadores_medico?.length>0){
-    html+=`<div class="insight-card">
-      <div class="insight-header"><div class="insight-dot" style="background:var(--danger)"></div><div class="insight-label" style="color:var(--danger)">Sinalizadores para o médico</div></div>
-      <div>`;
-    a.sinalizadores_medico.forEach(s=>{
-      html+=`<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-top:1px solid var(--gray-100);font-size:13px;color:var(--gray-600)">
-        <div style="width:8px;height:8px;border-radius:50%;background:${prioColor(s.prioridade)};margin-top:5px;flex-shrink:0"></div>${s.texto}</div>`;
-    });
-    html+=`</div></div>`;
-  }
-  document.getElementById('enriched-content').innerHTML=html;
-}
-
-function renderLifestyle(a){
-  const ev=a.estilo_vida||{};
-  let html=`<div class="enriched-header">
-    <div class="enriched-title">Estilo de vida</div>
-    <span class="ai-badge" style="background:#E1F5EE;color:#0F6E56">Sugestões complementares</span>
-  </div>`;
-  if(ev.intro){
-    html+=`<div style="font-size:13px;color:var(--gray-600);margin-bottom:1.25rem;padding:.85rem 1rem;background:var(--white);border-radius:var(--r);border:1px solid var(--gray-200)">${ev.intro}</div>`;
-  }
-  const sections=[
-    {key:'nutricao',label:'Nutrição',icon:'🥗',color:'#2E8B6E',bg:'#E8F5F1'},
-    {key:'exercicio',label:'Exercício',icon:'🏃',color:'#185FA5',bg:'#E6F1FB'},
-    {key:'sono',label:'Sono e descanso',icon:'🌙',color:'#534AB7',bg:'#EEEDFB'},
-    {key:'suplementos',label:'Suplementos sugeridos',icon:'💊',color:'#854F0B',bg:'#FAEEDA'},
-    {key:'outros',label:'Outros hábitos',icon:'✨',color:'#2A6B7C',bg:'#EAF5F8'},
-  ];
-  sections.forEach(sec=>{
-    const items=ev[sec.key];
-    if(!items||items.length===0) return;
-    html+=`<div class="insight-card">
-      <div class="insight-header"><div class="insight-dot" style="background:${sec.color}"></div><div class="insight-label" style="color:${sec.color}">${sec.icon} ${sec.label}</div></div>
-      <div class="lifestyle-pills">`;
-    items.forEach(item=>{html+=`<div class="ls-pill" style="background:${sec.bg};color:${sec.color}">${item}</div>`});
-    html+=`</div></div>`;
-  });
-  document.getElementById('lifestyle-content').innerHTML=html;
-}
-
-
 
 /* ── RENDER RESULT ── */
 function renderResult(a){
-  const typeLabels={clinica:'Análise clínica',genetica:'Genética / genômica',microbiota:'Microbiota '+currentSubtype};
-  const typeBadgeColors={
+  var typeLabels={clinica:'Análise clínica',genetica:'Genética / genômica',microbiota:'Microbiota '+currentSubtype};
+  var typeBadgeColors={
     clinica:'background:#EAF5F8;color:#1E5060',
     genetica:'background:#EEEDFB;color:#26215C',
     microbiota:'background:#FEF5E4;color:#633806'
   };
+  var profNome=document.getElementById('prof-nome')?document.getElementById('prof-nome').value.trim():'';
+  var profCrm=document.getElementById('prof-crm')?document.getElementById('prof-crm').value.trim():'';
+  var profEspec=document.getElementById('prof-especialidade')?document.getElementById('prof-especialidade').value:'';
+  var patNome=document.getElementById('patient-nome')?document.getElementById('patient-nome').value.trim():'';
+  var patSex=document.getElementById('patient-sex')?document.getElementById('patient-sex').value:'';
+  var patAge=document.getElementById('patient-age')?document.getElementById('patient-age').value:'';
 
-  const profNome=document.getElementById('prof-nome')?.value.trim()||'';
-  const profCrm=document.getElementById('prof-crm')?.value.trim()||'';
-  const profEspec=document.getElementById('prof-especialidade')?.value||'';
-  const patNome=document.getElementById('patient-nome')?.value.trim()||'';
-  const patSex=document.getElementById('patient-sex')?.value||'';
-  const patAge=document.getElementById('patient-age')?.value||'';
-
+  // Header
   document.getElementById('meta-patient').textContent=patNome||'Paciente';
-  document.getElementById('meta-detail').innerHTML=
-    `${[patSex,patAge?patAge+' anos':''].filter(Boolean).join(' · ')}<br>`+
-    (profNome?`Solicitante: ${profNome}${profCrm?' · '+profCrm:''}<br>`:'') +
-    (profEspec?`${profEspec} · `:'') +
-    new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
-  const typeBadge=document.getElementById('meta-type-badge');
-  typeBadge.textContent=typeLabels[currentType]+' · '+a.tipo_exame;
-  typeBadge.style.cssText=typeBadgeColors[currentType]+';font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500;margin-top:4px';
+  var detailParts=[];
+  if(patSex) detailParts.push(patSex);
+  if(patAge) detailParts.push(patAge+' anos');
+  var detailHtml=(detailParts.length?detailParts.join(' · ')+'<br>':'');
+  if(profNome) detailHtml+='Solicitante: '+profNome+(profCrm?' · '+profCrm:'')+'<br>';
+  if(profEspec) detailHtml+=profEspec+' · ';
+  detailHtml+=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+  document.getElementById('meta-detail').innerHTML=detailHtml;
+
+  var typeBadge=document.getElementById('meta-type-badge');
+  typeBadge.textContent=(typeLabels[currentType]||'Análise')+' · '+(a.tipo_exame||'');
+  typeBadge.style.cssText=(typeBadgeColors[currentType]||'')+';font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500;margin-top:4px;display:inline-block';
 
   renderHero(a);
   renderScores(a);
@@ -1601,87 +1362,64 @@ function renderResult(a){
   renderEnriched(a);
   renderLifestyle(a);
   prepareShare(a);
+
+  // Generate access codes
+  var codes=generateAccessCodes();
+  if(codes) showAccessCodes(codes.medCode,codes.pacCode);
 }
 
 function renderHero(a){
-  const hero=document.getElementById('doc-hero');
+  var hero=document.getElementById('doc-hero');
+  if(!hero) return;
+  var html='';
   if(currentType==='clinica' && a._phenoAge && a._chronoAge){
-    const delta=Math.round((a._phenoAge-a._chronoAge)*10)/10;
-    const deltaClass=delta>2?'alert':delta<-2?'good':'';
-    const needlePct=Math.max(5,Math.min(95,50+(delta*8)));
-    const achados=(a.parametros||[]).filter(p=>!['normal','adequado'].includes(p.status?.toLowerCase())).length;
-    hero.innerHTML=`
-      <div class="hero-cell">
-        <div class="hero-cell-label">Idade cronológica</div>
-        <div class="hero-cell-val">${a._chronoAge}</div>
-        <div class="hero-cell-sub">anos</div>
-      </div>
-      <div class="hero-cell">
-        <div class="hero-cell-label">PhenoAge estimada</div>
-        <div class="hero-cell-val ${deltaClass}">${a._phenoAge}</div>
-        <div class="hero-cell-sub ${deltaClass}">${delta>0?'+'+delta:delta} anos ${delta>2?'acima':delta<-2?'abaixo — ótimo':'· dentro do esperado'}</div>
-      </div>
-      <div class="hero-cell">
-        <div class="hero-cell-label">Perfil de envelhecimento</div>
-        <div class="gauge-track"><div class="gauge-needle" style="left:${needlePct}%"></div></div>
-        <div class="hero-cell-sub ${delta>2?'alert':delta>0?'warn':''}">${delta>3?'Envelhecimento acelerado':delta>0?'Levemente acima da média':'Envelhecimento saudável'}</div>
-      </div>
-      <div class="hero-cell">
-        <div class="hero-cell-label">Achados em atenção</div>
-        <div class="hero-cell-val ${achados>3?'alert':achados>1?'warn':'good'}">${achados}</div>
-        <div class="hero-cell-sub">de ${(a.parametros||[]).length} parâmetros</div>
-      </div>`;
+    var delta=Math.round((a._phenoAge-a._chronoAge)*10)/10;
+    var dc=delta>2?'alert':delta<-2?'good':'';
+    var needle=Math.max(5,Math.min(95,50+(delta*8)));
+    var achados=(a.parametros||[]).filter(function(p){return !['normal','adequado'].includes((p.status||'').toLowerCase());}).length;
+    html='<div class="hero-cell"><div class="hero-cell-label">Idade cronológica</div>'+
+      '<div class="hero-cell-val">'+a._chronoAge+'</div>'+
+      '<div class="hero-cell-sub">anos</div></div>'+
+      '<div class="hero-cell"><div class="hero-cell-label">PhenoAge estimada</div>'+
+      '<div class="hero-cell-val '+dc+'">'+a._phenoAge+'</div>'+
+      '<div class="hero-cell-sub '+dc+'">'+(delta>0?'+':'')+delta+' anos '+(delta>2?'acima':delta<-2?'abaixo — ótimo':'· esperado')+'</div></div>'+
+      '<div class="hero-cell"><div class="hero-cell-label">Perfil de envelhecimento</div>'+
+      '<div class="gauge-track"><div class="gauge-needle" style="left:'+needle+'%"></div></div>'+
+      '<div class="hero-cell-sub '+(delta>2?'alert':delta>0?'warn':'')+'">'+(delta>3?'Envelhecimento acelerado':delta>0?'Levemente acima':'Envelhecimento saudável')+'</div></div>'+
+      '<div class="hero-cell"><div class="hero-cell-label">Achados em atenção</div>'+
+      '<div class="hero-cell-val '+(achados>3?'alert':achados>1?'warn':'good')+'">'+achados+'</div>'+
+      '<div class="hero-cell-sub">de '+(a.parametros||[]).length+' parâmetros</div></div>';
   } else if(currentType==='genetica'){
-    const scores=calcGeneticScores(a);
-    const elevados=scores.filter(s=>['alta','aumentada'].includes((s.nivel||'').toLowerCase().replace('predisposição ',''))).length;
-    hero.innerHTML=`
-      <div class="hero-cell">
-        <div class="hero-cell-label">Painel genético</div>
-        <div class="hero-cell-val" style="font-size:20px">🧬</div>
-        <div class="hero-cell-sub">${a.tipo_exame||'Estilo de vida'}</div>
-      </div>
-      <div class="hero-cell">
-        <div class="hero-cell-label">Categorias avaliadas</div>
-        <div class="hero-cell-val good">${scores.filter(s=>s.nivel&&s.nivel!=='não avaliado').length}</div>
-        <div class="hero-cell-sub">de ${scores.length} categorias</div>
-      </div>
-      <div class="hero-cell">
-        <div class="hero-cell-label">Predisposições elevadas</div>
-        <div class="hero-cell-val ${elevados>2?'alert':elevados>0?'warn':'good'}">${elevados}</div>
-        <div class="hero-cell-sub">requerem atenção</div>
-      </div>
-      <div class="hero-cell">
-        <div class="hero-cell-label">Variantes identificadas</div>
-        <div class="hero-cell-val">${(a.variantes_encontradas||[]).length||'—'}</div>
-        <div class="hero-cell-sub">no laudo</div>
-      </div>`;
+    var scores=calcGeneticScores(a);
+    var elevados=scores.filter(function(s){return ['alta','aumentada'].includes((s.nivel||'').toLowerCase().replace('predisposição ',''));}).length;
+    html='<div class="hero-cell"><div class="hero-cell-label">Painel genético</div>'+
+      '<div class="hero-cell-val" style="font-size:20px">🧬</div>'+
+      '<div class="hero-cell-sub">'+(a.tipo_exame||'Estilo de vida')+'</div></div>'+
+      '<div class="hero-cell"><div class="hero-cell-label">Categorias avaliadas</div>'+
+      '<div class="hero-cell-val good">'+scores.filter(function(s){return s.nivel&&s.nivel!=='não avaliado';}).length+'</div>'+
+      '<div class="hero-cell-sub">de '+scores.length+' categorias</div></div>'+
+      '<div class="hero-cell"><div class="hero-cell-label">Predisposições elevadas</div>'+
+      '<div class="hero-cell-val '+(elevados>2?'alert':elevados>0?'warn':'good')+'">'+elevados+'</div>'+
+      '<div class="hero-cell-sub">requerem atenção</div></div>'+
+      '<div class="hero-cell"><div class="hero-cell-label">Variantes identificadas</div>'+
+      '<div class="hero-cell-val">'+((a.variantes_encontradas||[]).length||'—')+'</div>'+
+      '<div class="hero-cell-sub">no laudo</div></div>';
   } else if(currentType==='microbiota'){
-    const scores=a.scores_microbiota||[];
-    const altos=scores.filter(s=>['alto','muito alto'].includes((s.nivel||'').toLowerCase())).length;
-    const diagn=a.sumario_original||'Perfil microbiano identificado';
-    hero.innerHTML=`
-      <div class="hero-cell">
-        <div class="hero-cell-label">Diagnóstico geral</div>
-        <div class="hero-cell-val" style="font-size:16px;line-height:1.3">${a.tipo_exame||'Microbioma'}</div>
-      </div>
-      <div class="hero-cell">
-        <div class="hero-cell-label">Riscos identificados</div>
-        <div class="hero-cell-val ${altos>2?'alert':altos>0?'warn':'good'}">${altos}</div>
-        <div class="hero-cell-sub">em nível alto/muito alto</div>
-      </div>
-      <div class="hero-cell">
-        <div class="hero-cell-label">Cepas analisadas</div>
-        <div class="hero-cell-val">${(a.parametros||[]).length||'—'}</div>
-        <div class="hero-cell-sub">microrganismos</div>
-      </div>
-      <div class="hero-cell">
-        <div class="hero-cell-label">Subtipo</div>
-        <div class="hero-cell-val" style="font-size:16px">🔬</div>
-        <div class="hero-cell-sub">${currentSubtype}</div>
-      </div>`;
-  } else {
-    hero.innerHTML='';
+    var mscores=a.scores_microbiota||[];
+    var altos=mscores.filter(function(s){return ['alto','muito alto'].includes((s.nivel||'').toLowerCase());}).length;
+    html='<div class="hero-cell"><div class="hero-cell-label">Diagnóstico</div>'+
+      '<div class="hero-cell-val" style="font-size:16px;line-height:1.3">'+(a.tipo_exame||'Microbioma')+'</div></div>'+
+      '<div class="hero-cell"><div class="hero-cell-label">Riscos identificados</div>'+
+      '<div class="hero-cell-val '+(altos>2?'alert':altos>0?'warn':'good')+'">'+altos+'</div>'+
+      '<div class="hero-cell-sub">nível alto/muito alto</div></div>'+
+      '<div class="hero-cell"><div class="hero-cell-label">Cepas analisadas</div>'+
+      '<div class="hero-cell-val">'+((a.parametros||[]).length||'—')+'</div>'+
+      '<div class="hero-cell-sub">microrganismos</div></div>'+
+      '<div class="hero-cell"><div class="hero-cell-label">Subtipo</div>'+
+      '<div class="hero-cell-val" style="font-size:16px">🔬</div>'+
+      '<div class="hero-cell-sub">'+currentSubtype+'</div></div>';
   }
+  hero.innerHTML=html;
 }
 
 function renderScores(a){
@@ -1691,45 +1429,58 @@ function renderScores(a){
 }
 
 function renderClinicalScores(a){
-  const scores=calcOrganScores(a.parametros||[]);
-  let orgHtml=`<div class="section-band"><span class="section-band-label">🫀 Scores por sistema orgânico</span></div><div class="organ-grid">`;
-  scores.forEach(org=>{
-    const sc=scoreClass(org.score);
-    orgHtml+=`<div class="organ-card">
-      <div class="organ-icon">${org.icon}</div>
-      <div class="organ-name">${org.label}</div>
-      <div class="organ-score-val ${sc.text}">${org.score!==null?org.score+'%':'—'}</div>
-      <div class="organ-bar"><div class="organ-bar-fill ${sc.bar}" style="width:${org.score||0}%"></div></div>
-      <span class="organ-status ${sc.val}">${scoreLabel(org.score)}</span>
-    </div>`;
-  });
-  orgHtml+='</div>';
-  document.getElementById('organ-content').innerHTML=orgHtml;
-  renderKPIs(a);
-  renderBiomarkerChart(a);
-}
-
-function renderGeneticScores(a){
-  const scores=calcGeneticScores(a);
-  const nivelColor={baixa:'var(--success-dark)',moderada:'var(--teal-dark)',aumentada:'var(--warning-dark)',alta:'var(--danger-dark)','não avaliado':'var(--gray-400)'};
-  const nivelBg={baixa:'var(--success-bg)',moderada:'var(--teal-pale)',aumentada:'var(--warning-bg)',alta:'var(--danger-bg)','não avaliado':'var(--gray-100)'};
-  let html=`<div class="section-band"><span class="section-band-label">🧬 Predisposição genética — perfil de estilo de vida</span></div><div class="organ-grid" style="grid-template-columns:repeat(3,1fr)">`;
-  scores.forEach(s=>{
-    const nk=(s.nivel||'não avaliado').toLowerCase().replace('predisposição ','').split(' ')[0];
-    html+=`<div class="organ-card">
-      <div class="organ-icon">${s.icon||'🧬'}</div>
-      <div class="organ-name">${s.label}</div>
-      <div class="organ-score-val" style="color:${nivelColor[nk]||'var(--gray-400)'};font-size:13px;margin-top:2px">${s.nivel||'—'}</div>
-      <span class="organ-status" style="background:${nivelBg[nk]||'var(--gray-100)'};color:${nivelColor[nk]||'var(--gray-400)'};margin-top:6px">${s.descricao||''}</span>
-    </div>`;
+  var scores=calcOrganScores(a.parametros||[]);
+  var html='<div class="section-band"><span class="section-band-label">🫀 Scores por sistema orgânico</span></div><div class="organ-grid">';
+  scores.forEach(function(org){
+    var sc=scoreClass(org.score);
+    html+='<div class="organ-card">'+
+      '<div class="organ-icon">'+org.icon+'</div>'+
+      '<div class="organ-name">'+org.label+'</div>'+
+      '<div class="organ-score-val '+sc.text+'">'+(org.score!==null?org.score+'%':'—')+'</div>'+
+      '<div class="organ-bar"><div class="organ-bar-fill '+sc.bar+'" style="width:'+(org.score||0)+'%"></div></div>'+
+      '<span class="organ-status '+sc.val+'">'+scoreLabel(org.score)+'</span>'+
+      '</div>';
   });
   html+='</div>';
   document.getElementById('organ-content').innerHTML=html;
   renderKPIs(a);
-  if(a.variantes_encontradas?.length>0){
-    let chartHtml=`<div class="section-band"><span class="section-band-label">🔬 Variantes identificadas no laudo</span></div><div style="padding:1.25rem 1.75rem"><table class="param-table"><thead><tr><th>Gene</th><th>Alelo</th><th>Implicação</th><th>Evidência</th></tr></thead><tbody>`;
-    a.variantes_encontradas.forEach(v=>{
-      chartHtml+=`<tr><td><span class="param-name">${v.gene||'—'}</span></td><td style="font-family:monospace;font-size:12px">${v.alelo||'—'}</td><td style="font-size:12px;color:var(--gray-600)">${v.implicacao||'—'}</td><td><span class="badge ${v.evidencia==='alta'?'badge-hi':v.evidencia==='media'?'badge-lo':'badge-ok'}">${v.evidencia||'—'}</span></td></tr>`;
+  renderBioChart(a);
+}
+
+function renderGeneticScores(a){
+  var scores=calcGeneticScores(a);
+  var nivelColor={baixa:'var(--success-dark)',moderada:'var(--teal-dark)',aumentada:'var(--warning-dark)',alta:'var(--danger-dark)','não avaliado':'var(--gray-400)'};
+  var nivelBg={baixa:'var(--success-bg)',moderada:'var(--teal-pale)',aumentada:'var(--warning-bg)',alta:'var(--danger-bg)','não avaliado':'var(--gray-100)'};
+  var html='<div class="section-band"><span class="section-band-label">🧬 Predisposição genética — perfil de estilo de vida</span></div>'+
+    '<div class="organ-grid" style="grid-template-columns:repeat(3,1fr)">';
+  scores.forEach(function(s){
+    var nk=(s.nivel||'não avaliado').toLowerCase().replace('predisposição ','').split(' ')[0];
+    var cor=nivelColor[nk]||'var(--gray-400)';
+    var bg=nivelBg[nk]||'var(--gray-100)';
+    var barHtml=s.nivel_num>0?'<div class="organ-bar"><div class="organ-bar-fill" style="width:'+s.nivel_num+'%;background:'+cor+'"></div></div>':'';
+    html+='<div class="organ-card">'+
+      '<div class="organ-icon">'+(s.icon||'🧬')+'</div>'+
+      '<div class="organ-name">'+s.label+'</div>'+
+      '<div class="organ-score-val" style="color:'+cor+';font-size:13px;margin-top:2px">'+(s.nivel||'—')+'</div>'+
+      barHtml+
+      '<span class="organ-status" style="background:'+bg+';color:'+cor+';margin-top:6px">'+(s.descricao||'')+'</span>'+
+      '</div>';
+  });
+  html+='</div>';
+  document.getElementById('organ-content').innerHTML=html;
+  renderKPIs(a);
+  if(a.variantes_encontradas&&a.variantes_encontradas.length>0){
+    var chartHtml='<div class="section-band"><span class="section-band-label">🔬 Variantes identificadas</span></div>'+
+      '<div style="padding:1.25rem 1.75rem"><table class="param-table"><thead><tr>'+
+      '<th>Gene</th><th>Alelo</th><th>Implicação</th><th>Evidência</th>'+
+      '</tr></thead><tbody>';
+    a.variantes_encontradas.forEach(function(v){
+      chartHtml+='<tr>'+
+        '<td><span class="param-name">'+(v.gene||'—')+'</span></td>'+
+        '<td style="font-family:monospace;font-size:12px">'+(v.alelo||'—')+'</td>'+
+        '<td style="font-size:12px;color:var(--gray-600)">'+(v.implicacao||'—')+'</td>'+
+        '<td><span class="badge '+(v.evidencia==='alta'?'badge-hi':v.evidencia==='media'?'badge-lo':'badge-ok')+'">'+(v.evidencia||'—')+'</span></td>'+
+        '</tr>';
     });
     chartHtml+='</tbody></table></div>';
     document.getElementById('chart-content').innerHTML=chartHtml;
@@ -1737,984 +1488,458 @@ function renderGeneticScores(a){
 }
 
 function renderMicrobiotaScores(a){
-  let scores;
-  if(currentSubtype==='vaginal') scores=calcMicrobiotaVaginalScores(a);
-  else if(currentSubtype==='seminal') scores=calcMicrobiotaSeminalScores(a);
-  else scores=calcMicrobiotaIntestinalScores(a);
-  const subtypeLabels={vaginal:'Febiome vaginal',seminal:'Microbiota seminal',intestinal:'Microbiota intestinal',oral:'Microbiota oral',cutânea:'Microbiota cutânea'};
-  const nivelColor={'baixo':'var(--success-dark)','moderado':'var(--warning-dark)','alto':'var(--danger-dark)','muito alto':'#8B0000','não avaliado':'var(--gray-400)','ótimo':'var(--success-dark)','bom':'var(--teal-dark)','disbiose leve':'var(--warning-dark)','disbiose':'var(--danger-dark)'};
-  const nivelBg={'baixo':'var(--success-bg)','moderado':'var(--warning-bg)','alto':'var(--danger-bg)','muito alto':'#F5E0E0','não avaliado':'var(--gray-100)','ótimo':'var(--success-bg)','bom':'var(--teal-pale)','disbiose leve':'var(--warning-bg)','disbiose':'var(--danger-bg)'};
-  let html=`<div class="section-band"><span class="section-band-label">🔬 Scores de risco clínico — ${subtypeLabels[currentSubtype]||'microbiota'}</span></div><div class="organ-grid" style="grid-template-columns:repeat(${scores.length<=4?2:3},1fr)">`;
-  scores.forEach(s=>{
-    const nk=(s.nivel||'não avaliado').toLowerCase();
-    html+=`<div class="organ-card">
-      <div class="organ-icon">${s.icon||'🔬'}</div>
-      <div class="organ-name">${s.label}</div>
-      <div class="organ-score-val" style="color:${nivelColor[nk]||'var(--gray-400)'};font-size:13px;font-weight:500;margin-top:2px">${s.nivel||'—'}</div>
-      ${s.nivel_num>0?`<div class="organ-bar"><div class="organ-bar-fill" style="width:${s.nivel_num}%;background:${nivelColor[nk]||'var(--gray-400)'}"></div></div>`:''}
-      ${s.cepas_relevantes?`<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px">${s.cepas_relevantes.slice(0,2).map(c=>`<span style="font-size:10px;padding:1px 5px;border-radius:8px;background:var(--gray-100);color:var(--gray-600)">${c}</span>`).join('')}</div>`:''}
-    </div>`;
+  var scoresFn={vaginal:calcMicrobiotaVaginalScores,seminal:calcMicrobiotaSeminalScores,intestinal:calcMicrobiotaIntestinalScores};
+  var fn=scoresFn[currentSubtype]||calcMicrobiotaIntestinalScores;
+  var scores=fn(a);
+  var subtypeLabel={vaginal:'Febiome vaginal',seminal:'Microbiota seminal',intestinal:'Microbiota intestinal',oral:'Microbiota oral'};
+  var nivelColor={'baixo':'var(--success-dark)','moderado':'var(--warning-dark)','alto':'var(--danger-dark)','muito alto':'#8B0000','não avaliado':'var(--gray-400)','ótimo':'var(--success-dark)','bom':'var(--teal-dark)'};
+  var cols=scores.length<=4?2:3;
+  var html='<div class="section-band"><span class="section-band-label">🔬 Scores de risco — '+(subtypeLabel[currentSubtype]||'microbiota')+'</span></div>'+
+    '<div class="organ-grid" style="grid-template-columns:repeat('+cols+',1fr)">';
+  scores.forEach(function(s){
+    var nk=(s.nivel||'não avaliado').toLowerCase();
+    var cor=nivelColor[nk]||'var(--gray-400)';
+    var barHtml=s.nivel_num>0?'<div class="organ-bar"><div class="organ-bar-fill" style="width:'+s.nivel_num+'%;background:'+cor+'"></div></div>':'';
+    var cepasHtml='';
+    if(s.cepas_relevantes&&s.cepas_relevantes.length>0){
+      cepasHtml='<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px">';
+      s.cepas_relevantes.slice(0,2).forEach(function(c){
+        cepasHtml+='<span style="font-size:10px;padding:1px 5px;border-radius:8px;background:var(--gray-100);color:var(--gray-600)">'+c+'</span>';
+      });
+      cepasHtml+='</div>';
+    }
+    html+='<div class="organ-card">'+
+      '<div class="organ-icon">'+(s.icon||'🔬')+'</div>'+
+      '<div class="organ-name">'+s.label+'</div>'+
+      '<div class="organ-score-val" style="color:'+cor+';font-size:13px;font-weight:500;margin-top:2px">'+(s.nivel||'—')+'</div>'+
+      barHtml+cepasHtml+'</div>';
   });
   html+='</div>';
   document.getElementById('organ-content').innerHTML=html;
   renderKPIs(a);
-  renderBiomarkerChart(a);
-  if(currentSubtype==='vaginal'){renderFIVChecklist(a);}
+  renderBioChart(a);
+  if(currentSubtype==='vaginal') renderFIVChecklist(a);
 }
 
 function renderFIVChecklist(a){
-  const fivSection=document.getElementById('chart-content');
-  const criterios=[
+  var criterios=[
     {label:'Lactobacillus ≥ log 3,0 (endometrial)',ok:false},
     {label:'Dominância L. crispatus / jensenii',ok:false},
     {label:'Patógenos BV-like < 3,0 log',ok:false},
     {label:'Candida ausente',ok:true},
-    {label:'ISTs ausentes (Chlamydia, Gonorreia)',ok:true},
+    {label:'ISTs ausentes',ok:true},
     {label:'Mycoplasma genitalium ausente',ok:false},
     {label:'HSV sem atividade viral',ok:true},
-    {label:'Critérios endometriais atendidos',ok:false},
+    {label:'Critérios endometriais atendidos',ok:false}
   ];
-  let html=`<div class="section-band"><span class="section-band-label">🔴 Critérios de liberação para FIV</span></div>
-  <div style="padding:1.25rem 1.75rem">
-  <div class="fiv-card">
-    <div class="fiv-title">Checklist de liberação — árvore decisória endometrial</div>
-    <div class="fiv-grid">`;
-  criterios.forEach(c=>{
-    html+=`<div class="fiv-item ${c.ok?'fiv-ok':'fiv-fail'}">${c.ok?'✓':'✗'} ${c.label}</div>`;
+  var html='<div class="section-band"><span class="section-band-label">🔴 Critérios de liberação para FIV</span></div>'+
+    '<div style="padding:1.25rem 1.75rem"><div class="fiv-card">'+
+    '<div class="fiv-title">Checklist de liberação — árvore decisória endometrial</div>'+
+    '<div class="fiv-grid">';
+  criterios.forEach(function(c){
+    html+='<div class="fiv-item '+(c.ok?'fiv-ok':'fiv-fail')+'">'+(c.ok?'✓':'✗')+' '+c.label+'</div>';
   });
-  html+=`</div>
-    <div style="margin-top:12px;padding:8px 12px;border-radius:var(--r-sm);background:var(--danger-bg);color:var(--danger-dark);font-size:12px;font-weight:500">
-      ✗ Critérios não atendidos — aguardar tratamento completo e reavaliação laboratorial antes de prosseguir com FIV.
-    </div>
-  </div></div>`;
-  fivSection.innerHTML=html;
+  html+='</div><div style="margin-top:12px;padding:8px 12px;border-radius:var(--r-sm);background:var(--danger-bg);color:var(--danger-dark);font-size:12px;font-weight:500">'+
+    '✗ Critérios não atendidos — aguardar tratamento e reavaliação antes de prosseguir com FIV.</div>'+
+    '</div></div>';
+  document.getElementById('chart-content').innerHTML=html;
 }
 
 function renderKPIs(a){
-  const kpis=a.kpis||[];
-  let kpiHtml=`<div class="section-band"><span class="section-band-label">📊 KPIs de risco — visão rápida</span></div><div class="kpi-grid">`;
+  var kpis=a.kpis||[];
+  var html='<div class="section-band"><span class="section-band-label">📊 KPIs de risco — visão rápida</span></div><div class="kpi-grid">';
   if(kpis.length>0){
-    kpis.slice(0,8).forEach(k=>{
-      const col=k.status==='critico'?'var(--danger-dark)':k.status==='atencao'?'var(--warning-dark)':'var(--success-dark)';
-      const bg=k.status==='critico'?'var(--danger-bg)':k.status==='atencao'?'var(--warning-bg)':'var(--success-bg)';
-      const tag=k.status==='critico'?'⚠ Investigar':k.status==='atencao'?'Limítrofe':'✓ Normal';
-      kpiHtml+=`<div class="kpi-card">
-        <div class="kpi-icon-wrap" style="background:${bg}"><span style="font-size:18px">${k.icone||'📊'}</span></div>
-        <div>
-          <div class="kpi-name">${k.nome}${k.unidade?' ('+k.unidade+')':''}</div>
-          <div class="kpi-val" style="color:${col}">${k.valor}</div>
-          <span class="kpi-tag" style="background:${bg};color:${col}">${tag}</span>
-        </div>
-      </div>`;
+    kpis.slice(0,8).forEach(function(k){
+      var col=k.status==='critico'?'var(--danger-dark)':k.status==='atencao'?'var(--warning-dark)':'var(--success-dark)';
+      var bg=k.status==='critico'?'var(--danger-bg)':k.status==='atencao'?'var(--warning-bg)':'var(--success-bg)';
+      var tag=k.status==='critico'?'⚠ Investigar':k.status==='atencao'?'Limítrofe':'✓ Normal';
+      html+='<div class="kpi-card">'+
+        '<div class="kpi-icon-wrap" style="background:'+bg+'"><span style="font-size:18px">'+(k.icone||'📊')+'</span></div>'+
+        '<div><div class="kpi-name">'+(k.nome||'')+(k.unidade?' ('+k.unidade+')':'')+'</div>'+
+        '<div class="kpi-val" style="color:'+col+'">'+(k.valor||'')+'</div>'+
+        '<span class="kpi-tag" style="background:'+bg+';color:'+col+'">'+tag+'</span></div>'+
+        '</div>';
     });
   } else {
-    kpiHtml+=`<div style="grid-column:1/-1;font-size:13px;color:var(--gray-400);padding:.5rem 0">KPIs extraídos automaticamente do laudo.</div>`;
+    html+='<div style="grid-column:1/-1;font-size:13px;color:var(--gray-400);padding:.5rem 0">KPIs disponíveis após processamento.</div>';
   }
-  kpiHtml+='</div>';
-  document.getElementById('kpi-section').innerHTML=kpiHtml;
+  html+='</div>';
+  document.getElementById('kpi-section').innerHTML=html;
 }
 
-function renderBiomarkerChart(a){
-  const bms=a.biomarcadores_impacto||[];
-  const section=document.getElementById('chart-content');
-  if(section.innerHTML) return;
-  let chartHtml=`<div class="section-band"><span class="section-band-label">📈 Impacto dos biomarcadores</span></div>`;
-  if(bms.length>0){
-    chartHtml+=`<div class="chart-section">
-      <div class="chart-legend">
-        <span><span class="legend-dot" style="background:var(--success)"></span>Anti-aging / protetor</span>
-        <span><span class="legend-dot" style="background:var(--danger)"></span>Pró-envelhecimento / disruptor</span>
-      </div>
-      <div style="position:relative;width:100%;height:${Math.max(200,bms.length*36)}px">
-        <canvas id="bm-chart" role="img" aria-label="Gráfico de impacto dos biomarcadores"></canvas>
-      </div>
-    </div>`;
-    section.innerHTML=chartHtml;
-    setTimeout(()=>{
-      const ctx=document.getElementById('bm-chart');
+function renderBioChart(a){
+  var bms=a.biomarcadores_impacto||[];
+  var section=document.getElementById('chart-content');
+  if(!section||section.innerHTML) return;
+  var html='<div class="section-band"><span class="section-band-label">📈 Impacto dos biomarcadores</span></div>';
+  if(bms.length>0&&window.Chart){
+    html+='<div class="chart-section">'+
+      '<div class="chart-legend">'+
+      '<span><span class="legend-dot" style="background:var(--success)"></span>Anti-aging / protetor</span>'+
+      '<span><span class="legend-dot" style="background:var(--danger)"></span>Pró-envelhecimento</span></div>'+
+      '<div style="position:relative;width:100%;height:'+Math.max(200,bms.length*36)+'px">'+
+      '<canvas id="bm-chart"></canvas></div></div>';
+    section.innerHTML=html;
+    setTimeout(function(){
+      var ctx=document.getElementById('bm-chart');
       if(!ctx) return;
       if(bioChart){bioChart.destroy();bioChart=null;}
-      const labels=bms.map(b=>b.nome);
-      const vals=bms.map(b=>b.tipo==='aging'?b.impacto_pct:-b.impacto_pct);
-      const colors=vals.map(v=>v>0?'#E24B4A':'#1D9E75');
+      var labels=bms.map(function(b){return b.nome;});
+      var vals=bms.map(function(b){return b.tipo==='aging'?b.impacto_pct:-b.impacto_pct;});
+      var colors=vals.map(function(v){return v>0?'#E24B4A':'#1D9E75';});
       bioChart=new Chart(ctx,{
         type:'bar',
-        data:{labels,datasets:[{label:'Impacto (%)',data:vals,backgroundColor:colors,borderRadius:4,borderSkipped:false}]},
+        data:{labels:labels,datasets:[{label:'Impacto (%)',data:vals,backgroundColor:colors,borderRadius:4,borderSkipped:false}]},
         options:{
           indexAxis:'y',responsive:true,maintainAspectRatio:false,
-          plugins:{legend:{display:false},tooltip:{callbacks:{label:(c)=>`${c.raw>0?'Pró-envelhecimento':'Protetor'}: ${Math.abs(c.raw).toFixed(1)}%`}}},
-          scales:{x:{grid:{color:'rgba(0,0,0,.06)'},ticks:{callback:v=>Math.abs(v)+'%'}},y:{grid:{display:false},ticks:{font:{size:11}}}}
+          plugins:{legend:{display:false}},
+          scales:{x:{grid:{color:'rgba(0,0,0,.06)'},ticks:{callback:function(v){return Math.abs(v)+'%';}}},y:{grid:{display:false},ticks:{font:{size:11}}}}
         }
       });
     },100);
   } else {
-    section.innerHTML=chartHtml+`<div style="padding:1.25rem 1.75rem;font-size:13px;color:var(--gray-400)">Dados de impacto disponíveis após processamento.</div>`;
+    section.innerHTML=html+'<div style="padding:1.25rem 1.75rem;font-size:13px;color:var(--gray-400)">Dados disponíveis após processamento.</div>';
   }
 }
 
 function renderOriginal(a){
-  let html='';
+  var html='';
   if(a.sumario_original){
-    html+=`<div class="sumario-box"><strong>Sumário:</strong> ${a.sumario_original}</div>`;
+    html+='<div class="sumario-box"><strong>Sumário:</strong> '+a.sumario_original+'</div>';
   }
-  if(a.parametros?.length>0){
-    html+=`<table class="param-table"><thead><tr>
-      <th>Parâmetro</th><th>Valor</th><th>Referência</th><th>Posição</th><th>Status</th>
-    </tr></thead><tbody>`;
-    a.parametros.forEach(p=>{
-      const pct=Math.min(Math.max(p.barra_pct||50,5),100);
-      const sc=statusClass(p.status||'normal');
-      const bc=p.status==='baixo'||p.status==='reduzido'?'var(--teal)':['alto','aumentado','critico'].includes(p.status)?'var(--danger)':'var(--success)';
-      html+=`<tr>
-        <td><span class="param-name">${p.nome}</span><span class="param-unit">${p.unidade||''}</span></td>
-        <td class="${sc}">${p.valor}</td>
-        <td style="font-size:12px;color:var(--gray-400)">${p.referencia||'—'}</td>
-        <td><div class="bar-wrap"><div class="bar-fill" style="width:${pct}%;background:${bc}"></div></div></td>
-        <td><span class="badge ${badgeClass(p.status||'normal')}">${p.status||'—'}</span></td>
-      </tr>`;
+  if(a.parametros&&a.parametros.length>0){
+    html+='<table class="param-table"><thead><tr>'+
+      '<th>Parâmetro</th><th>Valor</th><th>Referência</th><th>Posição</th><th>Status</th>'+
+      '</tr></thead><tbody>';
+    a.parametros.forEach(function(p){
+      var pct=Math.min(Math.max(p.barra_pct||50,5),100);
+      var sc=statusClass(p.status||'normal');
+      var bc=['alto','aumentado','critico'].includes(p.status||'')?'var(--danger)':['baixo','reduzido'].includes(p.status||'')?'var(--teal)':'var(--success)';
+      html+='<tr>'+
+        '<td><span class="param-name">'+p.nome+'</span><span class="param-unit">'+(p.unidade||'')+'</span></td>'+
+        '<td class="'+sc+'">'+p.valor+'</td>'+
+        '<td style="font-size:12px;color:var(--gray-400)">'+(p.referencia||'—')+'</td>'+
+        '<td><div class="bar-wrap"><div class="bar-fill" style="width:'+pct+'%;background:'+bc+'"></div></div></td>'+
+        '<td><span class="badge '+badgeClass(p.status||'normal')+'">'+(p.status||'—')+'</span></td>'+
+        '</tr>';
     });
     html+='</tbody></table>';
-    if(a._phenoAge){html+=`<div class="phenoage-ref">PhenoAge calculado localmente pelo modelo de Levine et al. (Nature Aging, 2018). Estimativa informativa.</div>`;}
+    if(a._phenoAge){html+='<div class="phenoage-ref">PhenoAge calculado localmente — Levine et al. (Nature Aging, 2018). Estimativa informativa.</div>';}
   } else {
-    html+=`<p style="font-size:13px;color:var(--gray-400);padding:1rem 0">Parâmetros disponíveis na aba de Scores e KPIs.</p>`;
+    html+='<p style="font-size:13px;color:var(--gray-400);padding:1rem 0">Parâmetros disponíveis na aba Scores e KPIs.</p>';
   }
   document.getElementById('original-content').innerHTML=html;
 }
 
 function renderEnriched(a){
-  let html='';
-  const cards=[
-    {key:'interpretacao_geral',label:'Interpretação geral',cls:'teal',icon:'🔬'},
-    {key:'perspectiva_preventiva',label:'Perspectiva preventiva',cls:'purple',icon:'🛡️'},
+  var html='';
+  var cards=[
+    {key:'interpretacao_geral',label:'Interpretação geral',cls:'teal',color:'var(--teal-dark)',icon:'🔬'},
+    {key:'perspectiva_preventiva',label:'Perspectiva preventiva',cls:'purple',color:'var(--purple)',icon:'🛡️'}
   ];
-  cards.forEach(card=>{
+  cards.forEach(function(card){
     if(!a[card.key]) return;
-    html+=`<div class="insight-card ${card.cls}">
-      <div class="insight-header"><span style="font-size:16px">${card.icon}</span><span class="insight-label" style="color:${card.cls==='teal'?'var(--teal-dark)':'var(--purple)'}">${card.label}</span></div>
-      <div class="insight-body">${a[card.key]}</div>
-    </div>`;
+    html+='<div class="insight-card '+card.cls+'">'+
+      '<div class="insight-header"><span style="font-size:16px">'+card.icon+'</span>'+
+      '<span class="insight-label" style="color:'+card.color+'">'+card.label+'</span></div>'+
+      '<div class="insight-body">'+a[card.key]+'</div></div>';
   });
-  if(a.achados_relevantes?.length>0){
-    html+=`<div class="insight-card amber">
-      <div class="insight-header"><span style="font-size:16px">⚠️</span><span class="insight-label" style="color:var(--warning-dark)">Achados relevantes</span></div>
-      <div class="risk-grid">`;
-    a.achados_relevantes.forEach(ach=>{
-      const col=ach.nivel==='alto'?'#B84040':ach.nivel==='medio'?'var(--warning-dark)':'var(--success-dark)';
-      html+=`<div class="risk-item"><div class="risk-dot" style="background:${col}"></div><div><strong style="color:var(--gray-800)">${ach.titulo}</strong><br>${ach.descricao}</div></div>`;
+  if(a.achados_relevantes&&a.achados_relevantes.length>0){
+    html+='<div class="insight-card amber">'+
+      '<div class="insight-header"><span style="font-size:16px">⚠️</span>'+
+      '<span class="insight-label" style="color:var(--warning-dark)">Achados relevantes</span></div>'+
+      '<div class="risk-grid">';
+    a.achados_relevantes.forEach(function(ach){
+      var col=ach.nivel==='alto'?'#B84040':ach.nivel==='medio'?'var(--warning-dark)':'var(--success-dark)';
+      html+='<div class="risk-item"><div class="risk-dot" style="background:'+col+'"></div>'+
+        '<div><strong style="color:var(--gray-800)">'+ach.titulo+'</strong><br>'+ach.descricao+'</div></div>';
     });
-    html+=`</div></div>`;
+    html+='</div></div>';
   }
-  if(a.sinalizadores_medico?.length>0){
-    html+=`<div class="insight-card red">
-      <div class="insight-header"><span style="font-size:16px">🔴</span><span class="insight-label" style="color:var(--danger-dark)">Sinalizadores para o médico</span></div>
-      <div class="signal-list">`;
-    a.sinalizadores_medico.forEach(s=>{
-      const col=s.prioridade==='alta'?'var(--danger-dark)':s.prioridade==='media'?'var(--warning-dark)':'var(--success-dark)';
-      html+=`<div class="signal-item"><div class="signal-dot" style="background:${col}"></div><span>${s.texto}</span></div>`;
+  if(a.sinalizadores_medico&&a.sinalizadores_medico.length>0){
+    html+='<div class="insight-card red">'+
+      '<div class="insight-header"><span style="font-size:16px">🔴</span>'+
+      '<span class="insight-label" style="color:var(--danger-dark)">Sinalizadores para o médico</span></div>'+
+      '<div class="signal-list">';
+    a.sinalizadores_medico.forEach(function(s){
+      var col=s.prioridade==='alta'?'var(--danger-dark)':s.prioridade==='media'?'var(--warning-dark)':'var(--success-dark)';
+      html+='<div class="signal-item"><div class="signal-dot" style="background:'+col+'"></div><span>'+s.texto+'</span></div>';
     });
-    html+=`</div></div>`;
+    html+='</div></div>';
   }
   document.getElementById('enriched-content').innerHTML=html;
 }
 
 function renderLifestyle(a){
-  const ev=a.estilo_vida||{};
-  let html='';
+  var ev=a.estilo_vida||{};
+  var html='';
   if(ev.intro){
-    html+=`<div class="insight-card green" style="margin-bottom:1rem">
-      <div class="insight-header"><span style="font-size:16px">🌿</span><span class="insight-label" style="color:var(--success-dark)">Orientações de estilo de vida</span></div>
-      <div class="insight-body">${ev.intro}</div>
-    </div>`;
+    html+='<div class="insight-card green">'+
+      '<div class="insight-header"><span style="font-size:16px">🌿</span>'+
+      '<span class="insight-label" style="color:var(--success-dark)">Orientações de estilo de vida</span></div>'+
+      '<div class="insight-body">'+ev.intro+'</div></div>';
   }
-  const sections=[
+  var sections=[
     {key:'nutricao',label:'Nutrição',icon:'🥗',color:'var(--success-dark)',bg:'var(--success-bg)'},
     {key:'exercicio',label:'Exercício',icon:'🏃',color:'var(--blue)',bg:'var(--blue-bg)'},
     {key:'sono',label:'Sono e descanso',icon:'🌙',color:'var(--purple)',bg:'var(--purple-bg)'},
     {key:'suplementos',label:'Suplementos sugeridos',icon:'💊',color:'var(--warning-dark)',bg:'var(--warning-bg)'},
-    {key:'outros',label:'Outros hábitos',icon:'✨',color:'var(--teal-dark)',bg:'var(--teal-pale)'},
+    {key:'outros',label:'Outros hábitos',icon:'✨',color:'var(--teal-dark)',bg:'var(--teal-pale)'}
   ];
-  const activeSections=sections.filter(s=>ev[s.key]?.length>0);
-  if(activeSections.length>0){
-    html+=`<div class="lifestyle-grid">`;
-    activeSections.forEach(sec=>{
-      html+=`<div class="ls-card">
-        <div class="ls-head" style="color:${sec.color}">${sec.icon} ${sec.label}</div>
-        <div class="ls-pills">`;
-      ev[sec.key].forEach(item=>{
-        html+=`<span class="ls-pill" style="background:${sec.bg};color:${sec.color}">${item}</span>`;
+  var active=sections.filter(function(s){return ev[s.key]&&ev[s.key].length>0;});
+  if(active.length>0){
+    html+='<div class="lifestyle-grid">';
+    active.forEach(function(sec){
+      html+='<div class="ls-card"><div class="ls-head" style="color:'+sec.color+'">'+sec.icon+' '+sec.label+'</div><div class="ls-pills">';
+      (ev[sec.key]||[]).forEach(function(item){
+        html+='<span class="ls-pill" style="background:'+sec.bg+';color:'+sec.color+'">'+item+'</span>';
       });
-      html+=`</div></div>`;
+      html+='</div></div>';
     });
-    html+=`</div>`;
+    html+='</div>';
   }
   document.getElementById('lifestyle-content').innerHTML=html;
 }
 
-function switchTab(tab,el){
-  document.querySelectorAll('.doc-tab').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
-  el.classList.add('active');
-  document.getElementById('tab-'+tab).classList.add('active');
-}
-
 /* ── SHARE ── */
 function prepareShare(a){
-  // Build rich share text
-  const params=(a.parametros||[]).filter(p=>p.status&&!['normal','adequado'].includes(p.status.toLowerCase()))
-    .slice(0,6).map(p=>`• ${p.nome}: ${p.valor} ${p.unidade||''} (${p.status})`).join('\n');
+  var params=(a.parametros||[])
+    .filter(function(p){return p.status&&!['normal','adequado'].includes(p.status.toLowerCase());})
+    .slice(0,6).map(function(p){return '• '+p.nome+': '+p.valor+' '+(p.unidade||'')+' ('+p.status+')';}).join('\n');
 
-  const shareText=`*SmartIA · Labis Life Diagnostics*
-*Exame:* ${a.tipo_exame}${a._phenoAge&&a._chronoAge?`
-*Idade biológica estimada (PhenoAge):* ${a._phenoAge} anos (cronológica: ${a._chronoAge})`:``}
+  var shareText='*SmartIA · Labis Life Diagnostics*\n'+
+    '*Exame:* '+(a.tipo_exame||'')+
+    (a._phenoAge&&a._chronoAge?'\n*PhenoAge:* '+a._phenoAge+' anos (cronológica: '+a._chronoAge+')':'')+
+    '\n\n*Interpretação:*\n'+(a.interpretacao_geral||'')+
+    (params?'\n\n*Parâmetros em atenção:*\n'+params:'')+
+    (a.perspectiva_preventiva?'\n\n*Perspectiva preventiva:*\n'+a.perspectiva_preventiva:'')+
+    '\n\n_Análise SmartIA · Labis Life Diagnostics. Não substitui avaliação médica._';
 
-*Interpretação clínica:*
-${a.interpretacao_geral}
-${params?`
-*Parâmetros em atenção:*
-${params}`:''}
-${a.perspectiva_preventiva?`
-*Perspectiva preventiva:*
-${a.perspectiva_preventiva}`:''}
-
-_Análise gerada pelo SmartIA · Labis Life Diagnostics. Este resumo é informativo e não substitui a avaliação médica._`;
-
-  document.getElementById('share-whatsapp').href=`https://wa.me/?text=${encodeURIComponent(shareText)}`;
-  document.getElementById('share-email').href=`mailto:?subject=Análise SmartIA · ${a.tipo_exame}&body=${encodeURIComponent(shareText)}`;
-
-  // Generate standalone HTML for sharing
-  window._shareHtml = generateShareableHTML(a);
+  var waEl=document.getElementById('share-whatsapp');
+  var emEl=document.getElementById('share-email');
+  if(waEl) waEl.href='https://wa.me/?text='+encodeURIComponent(shareText);
+  if(emEl) emEl.href='mailto:?subject=Análise SmartIA&body='+encodeURIComponent(shareText);
+  window._shareHtml=generateShareableHTML(a);
 }
 
 function generateShareableHTML(a){
-  const params=(a.parametros||[]).map(p=>`
-    <tr>
-      <td><strong>${p.nome}</strong><br><small>${p.unidade||''}</small></td>
-      <td style="text-align:center;font-weight:600;color:${['alto','aumentado','critico'].includes(p.status)?'#B84040':['baixo','reduzido'].includes(p.status)?'#2A6B7C':'#2E8B6E'}">${p.valor}</td>
-      <td style="text-align:center;font-size:12px;color:#5A7480">${p.referencia||'—'}</td>
-      <td style="text-align:center"><span style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;background:${['alto','aumentado','critico'].includes(p.status)?'#FDEAEA':['baixo','reduzido'].includes(p.status)?'#EAF5F8':'#E8F5F1'};color:${['alto','aumentado','critico'].includes(p.status)?'#B84040':['baixo','reduzido'].includes(p.status)?'#2A6B7C':'#2E8B6E'}">${p.status||'—'}</span></td>
-    </tr>`).join('');
+  var medCode=window._medCode||'—';
+  var pacCode=window._pacCode||'—';
+  var patNome=document.getElementById('patient-nome')?document.getElementById('patient-nome').value.trim():'';
+  var patSex=document.getElementById('patient-sex')?document.getElementById('patient-sex').value:'';
+  var patAge=document.getElementById('patient-age')?document.getElementById('patient-age').value:'';
+  var profNome=document.getElementById('prof-nome')?document.getElementById('prof-nome').value.trim():'';
+  var profCrm=document.getElementById('prof-crm')?document.getElementById('prof-crm').value.trim():'';
+  var profEspec=document.getElementById('prof-especialidade')?document.getElementById('prof-especialidade').value:'';
+  var dateStr=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
 
-  const sinais=(a.sinalizadores_medico||[]).map(s=>`<li style="margin-bottom:6px;color:${s.prioridade==='alta'?'#B84040':s.prioridade==='media'?'#C4820A':'#2E8B6E'}"><strong>[${s.prioridade?.toUpperCase()}]</strong> <span style="color:#5A7480">${s.texto}</span></li>`).join('');
-  const _sn = document.getElementById('prof-nome')?.value.trim()||'';
-  const _sc = document.getElementById('prof-crm')?.value.trim()||'';
-  const _se = document.getElementById('prof-especialidade')?.value||'';
-  const _pn = document.getElementById('patient-nome')?.value.trim()||'';
-  const _ps = document.getElementById('patient-sex')?.value||'';
-  const _pa = document.getElementById('patient-age')?.value||'';
-  const dateStr=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+  var params=(a.parametros||[]).map(function(p){
+    var sc=['alto','aumentado','critico'].includes(p.status||'')?'#B84040':['baixo','reduzido'].includes(p.status||'')?'#2A6B7C':'#1D9E75';
+    return '<tr><td style="padding:8px;border-bottom:1px solid #EEF2F4;font-size:13px;font-weight:500">'+p.nome+'</td>'+
+      '<td style="padding:8px;border-bottom:1px solid #EEF2F4;font-size:13px;color:'+sc+';font-weight:500;text-align:center">'+p.valor+' '+(p.unidade||'')+'</td>'+
+      '<td style="padding:8px;border-bottom:1px solid #EEF2F4;font-size:12px;color:#94A8B0;text-align:center">'+(p.referencia||'—')+'</td>'+
+      '<td style="padding:8px;border-bottom:1px solid #EEF2F4;text-align:center"><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:'+sc+'22;color:'+sc+';font-weight:500">'+(p.status||'—')+'</span></td></tr>';
+  }).join('');
 
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SmartIA · ${a.tipo_exame}</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',system-ui,sans-serif;background:#F8FAFB;color:#2C3E45;font-size:14px}
-.header{background:#fff;padding:20px 32px;border-bottom:1px solid #D8E2E6;display:flex;justify-content:space-between;align-items:center}
-.lab-name{font-size:18px;font-weight:700;color:#2A6B7C}.lab-sub{font-size:11px;color:#94A8B0;text-transform:uppercase;letter-spacing:.05em}
-.badge{font-size:10px;padding:3px 10px;border-radius:20px;background:#EAF5F8;color:#2A6B7C;font-weight:600;margin-top:4px;display:inline-block}
-.meta{text-align:right;font-size:12px;color:#94A8B0;line-height:1.8}
-.pheno{display:grid;grid-template-columns:repeat(3,1fr);background:#EAF5F8;border-bottom:1px solid #D8E2E6}
-.pm{padding:16px 24px;text-align:center;border-right:1px solid #D8E2E6}.pm:last-child{border-right:none}
-.pm-label{font-size:10px;color:#7BBFCC;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
-.pm-val{font-size:26px;font-weight:700;color:#2A6B7C}.pm-val.alert{color:#B84040}
-.section{padding:24px 32px;border-bottom:1px solid #EEF2F4}
-.section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94A8B0;margin-bottom:12px}
-table{width:100%;border-collapse:collapse}th{font-size:11px;font-weight:600;color:#94A8B0;text-align:left;padding:8px;border-bottom:1px solid #D8E2E6}
-td{padding:9px 8px;border-bottom:1px solid #EEF2F4;font-size:13px}tr:nth-child(even){background:#F8FAFB}
-.card{background:#fff;border:1px solid #EEF2F4;border-radius:10px;padding:16px 20px;margin-bottom:12px}
-.card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
-.card-body{font-size:13px;color:#5A7480;line-height:1.7}
-.disclaimer{background:#EEF2F4;padding:16px 32px;font-size:11px;color:#94A8B0;text-align:center;line-height:1.6}
-</style></head><body>
-<div class="header">
-  <div><div class="lab-name">Labis Life Diagnostics</div><div class="lab-sub">Medicina Diagnóstica</div><span class="badge">SmartIA · Análise Enriquecida</span></div>
-  <div class="meta"><div><strong>${a.tipo_exame}</strong></div><div>${dateStr}</div><div>SmartIA · Ref: LAB-${Date.now().toString().slice(-6)}</div></div>
-</div>
-${a._phenoAge&&a._chronoAge?`<div class="pheno">
-  <div class="pm"><div class="pm-label">Idade cronológica</div><div class="pm-val">${a._chronoAge}</div><div style="font-size:12px;color:#94A8B0">anos</div></div>
-  <div class="pm"><div class="pm-label">PhenoAge (biológica)</div><div class="pm-val ${(a._phenoAge-a._chronoAge)>2?'alert':''}">${a._phenoAge}</div><div style="font-size:12px;color:#94A8B0">anos estimados</div></div>
-  <div class="pm"><div class="pm-label">Delta</div><div class="pm-val ${(a._phenoAge-a._chronoAge)>2?'alert':''}">${(a._phenoAge-a._chronoAge)>0?'+':''}${Math.round((a._phenoAge-a._chronoAge)*10)/10}</div><div style="font-size:12px;color:#94A8B0">anos</div></div>
-</div>`:''}
-${params?`<div class="section"><div class="section-title">Resultados originais</div>
-<table><thead><tr><th>Parâmetro</th><th>Valor</th><th>Referência</th><th>Status</th></tr></thead><tbody>${params}</tbody></table></div>`:''}
-<div class="section"><div class="section-title">Análise clínica enriquecida</div>
-  <div class="card"><div class="card-title" style="color:#2A6B7C">Interpretação geral</div><div class="card-body">${a.interpretacao_geral}</div></div>
-  ${a.perspectiva_preventiva?`<div class="card"><div class="card-title" style="color:#5B4DB8">Perspectiva preventiva</div><div class="card-body">${a.perspectiva_preventiva}</div></div>`:''}
-  ${sinais?`<div class="card"><div class="card-title" style="color:#B84040">Sinalizadores para o médico</div><ul style="padding-left:16px">${sinais}</ul></div>`:''}
-</div>
-<div class="disclaimer">Esta análise é suporte informativo e não substitui a avaliação e conduta do médico responsável. SmartIA · Labis Life Diagnostics.</div>
-</body></html>`;
+  var sinais=(a.sinalizadores_medico||[]).map(function(s){
+    var col=s.prioridade==='alta'?'#B84040':s.prioridade==='media'?'#C4820A':'#1D9E75';
+    return '<div style="font-size:12px;padding:7px 10px;border-radius:6px;background:#F8FAFB;margin-bottom:5px;color:'+col+'"><strong>['+(s.prioridade||'').toUpperCase()+']</strong> <span style="color:#5A7480">'+s.texto+'</span></div>';
+  }).join('');
+
+  var ev=a.estilo_vida||{};
+  var lsHtml='';
+  [{key:'nutricao',label:'Nutrição',color:'#1D9E75'},{key:'exercicio',label:'Exercício',color:'#185FA5'},
+   {key:'sono',label:'Sono',color:'#534AB7'},{key:'suplementos',label:'Suplementos',color:'#C4820A'}].forEach(function(sec){
+    var items=ev[sec.key];
+    if(!items||!items.length) return;
+    lsHtml+='<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:500;color:'+sec.color+';text-transform:uppercase;margin-bottom:6px">'+sec.label+'</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:4px">'+
+      items.map(function(i){return '<span style="font-size:12px;padding:3px 10px;border-radius:10px;background:'+sec.color+'22;color:'+sec.color+'">'+i+'</span>';}).join('')+
+      '</div></div>';
+  });
+
+  var metaParts=[];
+  if(patSex) metaParts.push(patSex);
+  if(patAge) metaParts.push(patAge+' anos');
+  var metaStr=(metaParts.length?metaParts.join(' · ')+'<br>':'');
+  if(profNome) metaStr+='Solicitante: '+profNome+(profCrm?' · '+profCrm:'')+'<br>';
+  if(profEspec) metaStr+=profEspec+' · ';
+  metaStr+=dateStr;
+
+  var phenoBand='';
+  if(a._phenoAge&&a._chronoAge){
+    var delta=Math.round((a._phenoAge-a._chronoAge)*10)/10;
+    var dc=(a._phenoAge-a._chronoAge)>2?'#B84040':'#1E5060';
+    phenoBand='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;background:#EAF5F8;border-bottom:1px solid #D8E2E6">'+
+      '<div style="padding:14px;text-align:center;border-right:1px solid #D8E2E6"><div style="font-size:10px;color:#7BBFCC;text-transform:uppercase;margin-bottom:4px">Idade cronológica</div><div style="font-size:26px;font-weight:500;color:#1E5060">'+a._chronoAge+'</div></div>'+
+      '<div style="padding:14px;text-align:center;border-right:1px solid #D8E2E6"><div style="font-size:10px;color:#7BBFCC;text-transform:uppercase;margin-bottom:4px">PhenoAge estimada</div><div style="font-size:26px;font-weight:500;color:'+dc+'">'+a._phenoAge+'</div></div>'+
+      '<div style="padding:14px;text-align:center"><div style="font-size:10px;color:#7BBFCC;text-transform:uppercase;margin-bottom:4px">Delta</div><div style="font-size:26px;font-weight:500;color:'+dc+'">'+(delta>0?'+':'')+delta+'</div></div>'+
+      '</div>';
+  }
+
+  var medContent='<div class="section"><div class="section-title">Interpretação clínica enriquecida</div>'+
+    '<div class="insight teal">'+(a.interpretacao_geral||'—')+'</div>'+
+    (a.perspectiva_preventiva?'<div class="insight purple" style="margin-top:8px">'+a.perspectiva_preventiva+'</div>':'')+
+    '</div>'+
+    (sinais?'<div class="section"><div class="section-title" style="color:#B84040">Sinalizadores para o médico</div>'+sinais+'</div>':'')+
+    (params?'<div class="section"><div class="section-title">Resultados originais</div><table style="width:100%;border-collapse:collapse"><thead><tr>'+
+    '<th style="font-size:11px;color:#94A8B0;padding:6px 8px;border-bottom:1px solid #D8E2E6;text-align:left">Parâmetro</th>'+
+    '<th style="font-size:11px;color:#94A8B0;padding:6px 8px;border-bottom:1px solid #D8E2E6;text-align:center">Valor</th>'+
+    '<th style="font-size:11px;color:#94A8B0;padding:6px 8px;border-bottom:1px solid #D8E2E6;text-align:center">Referência</th>'+
+    '<th style="font-size:11px;color:#94A8B0;padding:6px 8px;border-bottom:1px solid #D8E2E6;text-align:center">Status</th>'+
+    '</tr></thead><tbody>'+params+'</tbody></table></div>':'');
+
+  var pacContent='<div class="section"><div class="section-title">Sumário do seu exame</div>'+
+    '<div class="insight teal">'+(a.sumario_original||a.interpretacao_geral||'—')+'</div></div>'+
+    (lsHtml?'<div class="section"><div class="section-title">Recomendações de estilo de vida</div>'+lsHtml+'</div>':'');
+
+  var css='*{box-sizing:border-box;margin:0;padding:0}body{font-family:"Segoe UI",system-ui,sans-serif;background:#F8FAFB;color:#2C3E45;min-height:100vh}'+
+    '#L{position:fixed;inset:0;background:#1E5060;display:flex;align-items:center;justify-content:center;z-index:999;padding:1rem}'+
+    '.lc{background:#fff;border-radius:16px;padding:2.5rem;width:100%;max-width:420px;text-align:center}'+
+    '.lt{font-size:24px;font-weight:600;color:#1E5060;margin-bottom:.5rem}'+
+    '.ls{font-size:13px;color:#5A7480;margin-bottom:1.75rem;line-height:1.6}'+
+    '.li{width:100%;border:1.5px solid #D8E2E6;border-radius:8px;padding:12px;font-size:16px;font-family:monospace;text-align:center;letter-spacing:.12em;text-transform:uppercase;outline:none;color:#1E5060;background:#F8FAFB;margin-bottom:12px}'+
+    '.li:focus{border-color:#3A8FA3}'+
+    '.lb{width:100%;background:#2A6B7C;color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:500;cursor:pointer}'+
+    '.le{font-size:12px;color:#B84040;margin-top:8px;min-height:18px}'+
+    '#D{display:none}.hd{background:#fff;padding:18px 28px;border-bottom:3px solid #2A6B7C;display:flex;justify-content:space-between;align-items:center}'+
+    '.hn{font-size:17px;font-weight:600;color:#2A6B7C}.hs{font-size:10px;color:#7BBFCC;text-transform:uppercase;margin-top:1px}'+
+    '.hb{font-size:10px;padding:2px 8px;border-radius:10px;background:#EAF5F8;color:#2A6B7C;border:.5px solid #7BBFCC;display:inline-block;margin-top:4px}'+
+    '.hm{text-align:right}.hp{font-size:16px;font-weight:600;color:#1E5060}.hd2{font-size:11px;color:#94A8B0;margin-top:2px;line-height:1.7}'+
+    '.section{background:#fff;border:.5px solid #EEF2F4;border-radius:10px;padding:18px 20px;margin-bottom:12px}'+
+    '.section-title{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:#94A8B0;margin-bottom:10px}'+
+    '.insight{font-size:13px;color:#5A7480;line-height:1.7;padding:12px 14px;border-radius:8px;border-left:3px solid}'+
+    '.insight.teal{background:#EAF5F8;border-color:#2A6B7C}.insight.purple{background:#EEEDFB;border-color:#534AB7}'+
+    '.ct{max-width:820px;margin:0 auto;padding:1.5rem}'+
+    '.ft{padding:16px 28px;border-top:3px solid #2A6B7C;font-size:11px;color:#94A8B0;text-align:center;background:#fff;margin-top:1.5rem}'+
+    '.ab{font-size:11px;padding:4px 12px;border-radius:20px;font-weight:500;display:inline-block;margin-top:6px}';
+
+  var jscode='var M="'+medCode+'",P="'+pacCode+'",MC='+JSON.stringify(medContent)+',PC='+JSON.stringify(pacContent)+',LS='+JSON.stringify(lsHtml)+';'+
+    'var attempts=0,blocked=false;'+
+    'function tryUnlock(){'+
+      'if(blocked){document.getElementById("E").textContent="Bloqueado. Aguarde 10 minutos.";return;}'+
+      'var code=document.getElementById("I").value.trim().toUpperCase();'+
+      'if(code===M){unlock("med");}else if(code===P){unlock("pac");}'+
+      'else{attempts++;if(attempts>=3){blocked=true;document.getElementById("E").textContent="3 tentativas incorretas. Bloqueado por 10 minutos.";'+
+      'setTimeout(function(){blocked=false;attempts=0;document.getElementById("E").textContent="";},600000);}'+
+      'else{document.getElementById("E").textContent="Código incorreto. "+(3-attempts)+" tentativa(s) restante(s).";}'+
+      '}'+
+    '}'+
+    'function unlock(r){'+
+      'document.getElementById("L").style.display="none";'+
+      'document.getElementById("D").style.display="block";'+
+      'var b=document.getElementById("B");'+
+      'if(r==="med"){b.textContent="Acesso médico — visão completa";b.style.cssText="background:#EAF5F8;color:#1E5060;font-size:11px;padding:4px 12px;border-radius:20px;font-weight:500;display:inline-block;margin-top:6px";'+
+      'document.getElementById("C").innerHTML=MC+(LS?"<div class='section'><div class='section-title'>Estilo de vida</div>"+LS+"</div>":"");}'+
+      'else{b.textContent="Acesso paciente — visão simplificada";b.style.cssText="background:#EEEDFB;color:#26215C;font-size:11px;padding:4px 12px;border-radius:20px;font-weight:500;display:inline-block;margin-top:6px";'+
+      'document.getElementById("C").innerHTML=PC;}'+
+    '}'+
+    'document.getElementById("I").addEventListener("keydown",function(e){if(e.key==="Enter")tryUnlock();});';
+
+  return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
+    '<title>SmartIA · Labis · '+patNome+'</title><style>'+css+'</style></head><body>'+
+    '<div id="L"><div class="lc">'+
+    '<div style="font-size:13px;font-weight:500;color:#2A6B7C;letter-spacing:.05em;margin-bottom:1.5rem;text-transform:uppercase">Labis Life Diagnostics · SmartIA</div>'+
+    '<div class="lt">Documento protegido</div>'+
+    '<div class="ls">Este laudo é confidencial.<br>Insira seu código de acesso para visualizar.</div>'+
+    '<input type="text" class="li" id="I" placeholder="MED-XXXXXX ou PAC-XXXXXX" maxlength="10">'+
+    '<button class="lb" onclick="tryUnlock()">Acessar documento</button>'+
+    '<div class="le" id="E"></div>'+
+    '<div style="font-size:11px;color:#94A8B0;margin-top:12px;line-height:1.5">Médicos: código MED- · Pacientes: código PAC-</div>'+
+    '</div></div>'+
+    '<div id="D">'+
+    '<div class="hd"><div><div class="hn">Labis Life Diagnostics</div><div class="hs">Medicina Diagnóstica</div><span class="hb">SmartIA · Análise Enriquecida</span></div>'+
+    '<div class="hm"><div class="hp">'+(patNome||'—')+'</div><div class="hd2">'+metaStr+'</div><span class="ab" id="B"></span></div></div>'+
+    phenoBand+
+    '<div class="ct" id="C"></div>'+
+    '<div class="ft">SmartIA · Labis Life Diagnostics · '+new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})+'</div>'+
+    '</div>'+
+    '<scr'+'ipt>'+jscode+'</scr'+'ipt>'+
+    '</body></html>';
 }
-function openShare(){document.getElementById('share-modal').classList.add('visible')}
-function closeShare(){document.getElementById('share-modal').classList.remove('visible')}
+
 function downloadShareHTML(){
   if(!lastAnalysis){alert('Gere uma análise primeiro.');return;}
-  if(!window._medCode||!window._pacCode){alert('Códigos de acesso não encontrados. Gere uma nova análise.');return;}
-  window._shareHtml = generateShareableHTML(lastAnalysis);
-  if(!window._shareHtml){alert('Erro ao gerar HTML.');return;}
-  const blob=new Blob([window._shareHtml],{type:'text/html;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
+  if(!window._medCode||!window._pacCode){alert('Gere uma análise primeiro para criar os códigos de acesso.');return;}
+  window._shareHtml=generateShareableHTML(lastAnalysis);
+  var blob=new Blob([window._shareHtml],{type:'text/html;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
   a.href=url;
-  const exame=(lastAnalysis?.tipo_exame||'Analise').replace(/\s+/g,'_');
-  const date=new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
-  a.download=`SmartIA_${exame}_${date}.html`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  var exame=(lastAnalysis.tipo_exame||'Analise').replace(/\s+/g,'_');
+  var date=new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  a.download='SmartIA_'+exame+'_'+date+'.html';
+  document.body.appendChild(a);a.click();
+  document.body.removeChild(a);URL.revokeObjectURL(url);
 }
 
 function copyLink(){
   if(!lastAnalysis) return;
-  const txt=`SmartIA · Labis Life Diagnostics\nExame: ${lastAnalysis.tipo_exame}${lastAnalysis._phenoAge?'\nPhenoAge: '+lastAnalysis._phenoAge+' anos':''}\n\n${lastAnalysis.interpretacao_geral}\n\n${lastAnalysis.perspectiva_preventiva}`;
-  navigator.clipboard.writeText(txt).then(()=>{
-    document.getElementById('copy-label').textContent='✓ Copiado!';
-    setTimeout(()=>document.getElementById('copy-label').textContent='Copiar texto da análise',2500);
+  var a=lastAnalysis;
+  var txt='SmartIA · Labis Life Diagnostics\nExame: '+(a.tipo_exame||'')+
+    (a._phenoAge?'\nPhenoAge: '+a._phenoAge+' anos':'')+
+    '\n\n'+(a.interpretacao_geral||'')+'\n\n'+(a.perspectiva_preventiva||'');
+  navigator.clipboard.writeText(txt).then(function(){
+    var lbl=document.getElementById('copy-label');
+    if(lbl){lbl.textContent='✓ Copiado!';setTimeout(function(){lbl.textContent='Copiar texto da análise';},2500);}
   });
 }
-function exportPDF(){
-  const {jsPDF} = window.jspdf;
-  if(!jsPDF){alert('Biblioteca PDF ainda carregando. Aguarde alguns segundos e tente novamente.');return;}
-  if(!lastAnalysis){alert('Gere uma análise primeiro.');return;}
 
-  const a=lastAnalysis;
-  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-  const W=210, margin=14, contentW=W-margin*2;
-  let y=14;
+function exportPDF(){window.print();}
 
-  // ── Header com logo e identidade ──
-  try{
-    // Logo embutido em base64 já está disponível na página
-    const logoEl=document.querySelector('.doc-logo, .nav-logo');
-    if(logoEl && logoEl.src && logoEl.src.startsWith('data:')){
-      doc.addImage(logoEl.src,'PNG',margin,y,32,16);
-    }
-  }catch(e){}
-
-  doc.setFontSize(18);
-  doc.setFont('helvetica','bold');
-  doc.setTextColor(42,107,124); // teal-dark
-  doc.text('Labis Life Diagnostics',50,y+6);
-  doc.setFontSize(9);
-  doc.setFont('helvetica','normal');
-  doc.setTextColor(90,116,128);
-  doc.text('MEDICINA DIAGNÓSTICA',50,y+12);
-  doc.setFontSize(8);
-  doc.setTextColor(58,143,163);
-  doc.text('SmartIA · Análise Clínica Enriquecida',50,y+17);
-
-  // Data e referência
-  const _profNome  = document.getElementById('prof-nome')?.value.trim()||'';
-  const _profCrm   = document.getElementById('prof-crm')?.value.trim()||'';
-  const _profEspec = document.getElementById('prof-especialidade')?.value||'';
-  const _patNome   = document.getElementById('patient-nome')?.value.trim()||'';
-  const _patSex    = document.getElementById('patient-sex')?.value||'';
-  const _patAge    = document.getElementById('patient-age')?.value||'';
-
-  doc.setFontSize(8);
-  doc.setTextColor(148,168,176);
-  const dateStr=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
-  const refStr=`Ref: LAB-${Date.now().toString().slice(-6)}`;
-  let metaY = y+6;
-  if(_patNome){ doc.setTextColor(44,62,69); doc.setFont('helvetica','bold'); doc.text(_patNome, W-margin, metaY, {align:'right'}); metaY+=4; doc.setFont('helvetica','normal'); }
-  if(_patSex||_patAge){ doc.setTextColor(148,168,176); doc.text([_patSex,_patAge?_patAge+' anos':''].filter(Boolean).join(' · '), W-margin, metaY, {align:'right'}); metaY+=4; }
-  if(_profNome){ doc.setTextColor(42,107,124); doc.text('Solicitante: '+_profNome+(_profCrm?' · '+_profCrm:''), W-margin, metaY, {align:'right'}); metaY+=4; }
-  if(_profEspec){ doc.setTextColor(148,168,176); doc.text(_profEspec, W-margin, metaY, {align:'right'}); metaY+=4; }
-  doc.setTextColor(148,168,176);
-  doc.text(dateStr, W-margin, metaY, {align:'right'});
-  doc.text(refStr, W-margin, metaY+4, {align:'right'});
-
-  y+=24;
-
-  // Linha separadora
-  doc.setDrawColor(216,226,230);
-  doc.setLineWidth(0.3);
-  doc.line(margin, y, W-margin, y);
-  y+=6;
-
-  // ── PhenoAge banner ──
-  if(a._phenoAge && a._chronoAge){
-    doc.setFillColor(234,245,248);
-    doc.roundedRect(margin,y,contentW,18,2,2,'F');
-    doc.setFontSize(9);
-    doc.setTextColor(42,107,124);
-    doc.setFont('helvetica','bold');
-    doc.text('PHENOAGE (Levine et al. 2018)',margin+4,y+5);
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(8);
-    doc.setTextColor(90,116,128);
-    doc.text(`Idade cronológica: ${a._chronoAge} anos`,margin+4,y+10);
-    const delta=Math.round((a._phenoAge-a._chronoAge)*10)/10;
-    const deltaStr=delta>0?`+${delta}`:String(delta);
-    doc.text(`Idade biológica estimada: ${a._phenoAge} anos  |  Delta: ${deltaStr} anos`,margin+4,y+15);
-    y+=22;
+/* ── ACCESS CODES ── */
+function simpleHash(str){
+  var h1=0xdeadbeef,h2=0x41c6ce57;
+  for(var i=0,ch;i<str.length;i++){
+    ch=str.charCodeAt(i);
+    h1=Math.imul(h1^ch,2654435761);h2=Math.imul(h2^ch,1597334677);
   }
-
-  // ── Tipo e sumário ──
-  doc.setFontSize(11);
-  doc.setFont('helvetica','bold');
-  doc.setTextColor(30,80,96);
-  doc.text(a.tipo_exame||'Análise Clínica',margin,y);
-  y+=5;
-  if(a.sumario_original){
-    doc.setFontSize(8);
-    doc.setFont('helvetica','normal');
-    doc.setTextColor(90,116,128);
-    const sumLines=doc.splitTextToSize(a.sumario_original,contentW);
-    doc.text(sumLines,margin,y);
-    y+=sumLines.length*4+3;
-  }
-
-  // ── Tabela de parâmetros ──
-  if(a.parametros && a.parametros.length>0){
-    doc.setFontSize(9);
-    doc.setFont('helvetica','bold');
-    doc.setTextColor(42,107,124);
-    doc.text('RESULTADOS ORIGINAIS',margin,y);
-    y+=4;
-
-    const rows=a.parametros.map(p=>[
-      p.nome,
-      `${p.valor} ${p.unidade||''}`.trim(),
-      p.referencia||'—',
-      (p.status||'—').toUpperCase()
-    ]);
-
-    doc.autoTable({
-      startY:y,
-      head:[['Parâmetro','Valor','Referência','Status']],
-      body:rows,
-      margin:{left:margin,right:margin},
-      styles:{fontSize:8,cellPadding:2,lineColor:[216,226,230],lineWidth:0.2},
-      headStyles:{fillColor:[42,107,124],textColor:255,fontStyle:'bold',fontSize:8},
-      columnStyles:{
-        0:{cellWidth:70},
-        1:{cellWidth:35,halign:'center'},
-        2:{cellWidth:55,halign:'center'},
-        3:{cellWidth:22,halign:'center'}
-      },
-      didParseCell:(data)=>{
-        if(data.section==='body' && data.column.index===3){
-          const v=(data.cell.raw||'').toLowerCase();
-          if(['alto','aumentado','critico'].includes(v)) data.cell.styles.textColor=[184,64,64];
-          else if(['baixo','reduzido'].includes(v)) data.cell.styles.textColor=[42,107,124];
-          else data.cell.styles.textColor=[46,139,110];
-        }
-      },
-      alternateRowStyles:{fillColor:[248,250,251]}
-    });
-    y=doc.lastAutoTable.finalY+6;
-  }
-
-  // ── Interpretação clínica ──
-  const addSection=(title,text,color)=>{
-    if(!text) return;
-    if(y>260){doc.addPage();y=14;}
-    doc.setFontSize(9);
-    doc.setFont('helvetica','bold');
-    doc.setTextColor(...color);
-    doc.text(title,margin,y);
-    y+=4;
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(8);
-    doc.setTextColor(90,116,128);
-    const lines=doc.splitTextToSize(text.replace(/<[^>]+>/g,''),contentW);
-    // page break guard
-    lines.forEach(line=>{
-      if(y>280){doc.addPage();y=14;}
-      doc.text(line,margin,y);
-      y+=4;
-    });
-    y+=3;
-  };
-
-  addSection('INTERPRETAÇÃO CLÍNICA ENRIQUECIDA', a.interpretacao_geral, [30,80,96]);
-  addSection('PERSPECTIVA PREVENTIVA', a.perspectiva_preventiva, [91,77,184]);
-
-  // Achados relevantes
-  if(a.achados_relevantes && a.achados_relevantes.length>0){
-    if(y>250){doc.addPage();y=14;}
-    doc.setFontSize(9);
-    doc.setFont('helvetica','bold');
-    doc.setTextColor(196,130,10);
-    doc.text('ACHADOS RELEVANTES',margin,y);
-    y+=4;
-    a.achados_relevantes.forEach(ach=>{
-      if(y>275){doc.addPage();y=14;}
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(8);
-      doc.setTextColor(44,62,69);
-      doc.text(`• ${ach.titulo}`,margin,y);
-      y+=4;
-      doc.setFont('helvetica','normal');
-      doc.setTextColor(90,116,128);
-      const lines=doc.splitTextToSize(ach.descricao.replace(/<[^>]+>/g,''),contentW-4);
-      lines.forEach(l=>{
-        if(y>280){doc.addPage();y=14;}
-        doc.text(l,margin+3,y);
-        y+=3.5;
-      });
-      y+=1;
-    });
-    y+=3;
-  }
-
-  // Sinalizadores
-  if(a.sinalizadores_medico && a.sinalizadores_medico.length>0){
-    if(y>250){doc.addPage();y=14;}
-    doc.setFontSize(9);
-    doc.setFont('helvetica','bold');
-    doc.setTextColor(184,64,64);
-    doc.text('SINALIZADORES PARA O MÉDICO',margin,y);
-    y+=4;
-    a.sinalizadores_medico.forEach(s=>{
-      if(y>278){doc.addPage();y=14;}
-      doc.setFont('helvetica','normal');
-      doc.setFontSize(8);
-      const prio=s.prioridade==='alta'?'[ALTA]':s.prioridade==='media'?'[MÉDIA]':'[BAIXA]';
-      const color=s.prioridade==='alta'?[184,64,64]:s.prioridade==='media'?[196,130,10]:[46,139,110];
-      doc.setTextColor(...color);
-      doc.text(prio,margin,y);
-      doc.setTextColor(90,116,128);
-      const txt=doc.splitTextToSize(s.texto.replace(/<[^>]+>/g,''),contentW-18);
-      doc.text(txt,margin+14,y);
-      y+=txt.length*3.5+2;
-    });
-    y+=3;
-  }
-
-  // Estilo de vida
-  const ev=a.estilo_vida||{};
-  const lsSections=[
-    {key:'nutricao',label:'NUTRIÇÃO'},
-    {key:'exercicio',label:'EXERCÍCIO'},
-    {key:'sono',label:'SONO E DESCANSO'},
-    {key:'suplementos',label:'SUPLEMENTOS SUGERIDOS'},
-    {key:'outros',label:'OUTROS HÁBITOS'},
-  ];
-  lsSections.forEach(sec=>{
-    const items=ev[sec.key];
-    if(!items||items.length===0) return;
-    if(y>265){doc.addPage();y=14;}
-    doc.setFontSize(8.5);
-    doc.setFont('helvetica','bold');
-    doc.setTextColor(42,107,124);
-    doc.text(sec.label,margin,y);
-    y+=4;
-    items.forEach(item=>{
-      if(y>278){doc.addPage();y=14;}
-      doc.setFont('helvetica','normal');
-      doc.setFontSize(8);
-      doc.setTextColor(90,116,128);
-      const lines=doc.splitTextToSize(`• ${item}`,contentW-4);
-      doc.text(lines,margin+2,y);
-      y+=lines.length*3.8;
-    });
-    y+=3;
-  });
-
-  // ── Footer em todas as páginas ──
-  const totalPagesCount=doc.internal.getNumberOfPages();
-  for(let i=1;i<=totalPagesCount;i++){
-    doc.setPage(i);
-    doc.setDrawColor(216,226,230);
-    doc.setLineWidth(0.3);
-    doc.line(margin,287,W-margin,287);
-    doc.setFontSize(7);
-    doc.setTextColor(148,168,176);
-    doc.text('Esta análise é um suporte informativo e não substitui a avaliação médica. SmartIA · Labis Life Diagnostics.',margin,291);
-    doc.text(`${i}/${totalPagesCount}`,W-margin,291,{align:'right'});
-  }
-
-  // Save
-  const fileName=`SmartIA_${(a.tipo_exame||'Analise').replace(/\s+/g,'_')}_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.pdf`;
-  doc.save(fileName);
-}
-
-document.getElementById('share-modal').addEventListener('click',function(e){if(e.target===this)closeShare()});
-
-/* ══════════════════════════════════════════
-   ACCESS CODE SYSTEM
-   ══════════════════════════════════════════ */
-
-function simpleHash(str) {
-  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
-  for (let i = 0, ch; i < str.length; i++) {
-    ch = str.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  const num = (4294967296 * (2097151 & h2) + h1) >>> 0;
+  h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
+  h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
+  var num=(4294967296*(2097151&h2)+h1)>>>0;
   return num.toString(36).padStart(7,'0').substring(0,6).toUpperCase();
 }
 
-function generateAccessCodes() {
-  const ts = Date.now().toString();
-  const profNome = document.getElementById('prof-nome')?.value.trim() || '';
-  const profCrm  = document.getElementById('prof-crm')?.value.trim() || '';
-  const patNome  = document.getElementById('patient-nome')?.value.trim() || '';
-  const patAge   = document.getElementById('patient-age')?.value || '';
-
-  // Validate CRM format: 5-6 digits + / + 2 state letters (e.g. 123456/SP)
-  const crmValid = /^\d{5,6}\/[A-Z]{2}$/.test(profCrm.toUpperCase().replace(/\s/g,''));
-  if (!crmValid && profCrm) {
-    showError('⚠️ Formato de CRM inválido. Use o formato: 123456/SP (número + / + estado)');
-    return null;
+function generateAccessCodes(){
+  var ts=Date.now().toString();
+  var profNome=document.getElementById('prof-nome')?document.getElementById('prof-nome').value.trim():'';
+  var profCrm=document.getElementById('prof-crm')?document.getElementById('prof-crm').value.trim():'';
+  var patNome=document.getElementById('patient-nome')?document.getElementById('patient-nome').value.trim():'';
+  var patAge=document.getElementById('patient-age')?document.getElementById('patient-age').value:'';
+  var crmVal=profCrm.toUpperCase().replace(/\s/g,'');
+  if(profCrm&&!/^\d{5,6}\/[A-Z]{2}$/.test(crmVal)){
+    showError('Formato de CRM inválido. Use: 123456/SP');return null;
   }
-
-  const medCode  = 'MED-' + simpleHash(profNome + profCrm.toUpperCase() + ts);
-  const pacCode  = 'PAC-' + simpleHash(patNome + patAge + ts);
-
-  return { medCode, pacCode, ts };
+  var medCode='MED-'+simpleHash(profNome+profCrm.toUpperCase()+ts);
+  var pacCode='PAC-'+simpleHash(patNome+patAge+ts);
+  window._medCode=medCode;window._pacCode=pacCode;
+  return {medCode:medCode,pacCode:pacCode,ts:ts};
 }
 
-function validateCRM(input) {
-  const val = input.value.trim().toUpperCase().replace(/\s/g,'');
-  const valid = /^\d{5,6}\/[A-Z]{2}$/.test(val);
-  const hint = document.getElementById('crm-hint');
-  if (!hint) return;
-  if (!val) { hint.style.display = 'none'; return; }
-  if (valid) {
-    hint.textContent = '✓ CRM válido';
-    hint.style.color = 'var(--success-dark)';
-  } else {
-    hint.textContent = 'Formato: 123456/SP';
-    hint.style.color = 'var(--warning-dark)';
-  }
-  hint.style.display = 'block';
+function showAccessCodes(medCode,pacCode){
+  document.getElementById('code-med-val').textContent=medCode;
+  document.getElementById('code-pac-val').textContent=pacCode;
+  document.getElementById('codes-modal').classList.add('visible');
 }
 
-function showAccessCodes(medCode, pacCode) {
-  // Show modal with both codes after analysis
-  const modal = document.getElementById('codes-modal');
-  document.getElementById('code-med-val').textContent = medCode;
-  document.getElementById('code-pac-val').textContent = pacCode;
-  modal.classList.add('visible');
-  // Store codes for use in shared HTML
-  window._medCode = medCode;
-  window._pacCode = pacCode;
-}
-
-function copyCode(id) {
-  const val = document.getElementById(id).textContent;
-  navigator.clipboard.writeText(val).then(() => {
-    const btn = event.target;
-    const orig = btn.textContent;
-    btn.textContent = '✓ Copiado!';
-    setTimeout(() => btn.textContent = orig, 2000);
+function copyCode(id){
+  var val=document.getElementById(id)?document.getElementById(id).textContent:'';
+  navigator.clipboard.writeText(val).then(function(){
+    var btn=event.target;var orig=btn.textContent;
+    btn.textContent='✓ Copiado!';setTimeout(function(){btn.textContent=orig;},2000);
   });
 }
 
-function sendCodeWhatsApp(codeId) {
-  const code = document.getElementById(codeId).textContent;
-  const patNome = document.getElementById('patient-nome')?.value.trim() || 'paciente';
-  const msg = codeId === 'code-pac-val'
-    ? `Olá ${patNome}! Seu laudo SmartIA · Labis Life Diagnostics está disponível.\n\nSeu código de acesso pessoal: *${code}*\n\nUse este código para abrir o documento de laudo que será enviado em seguida.`
-    : `Código de acesso médico SmartIA: *${code}*\n\nUse este código para acessar a análise clínica completa.`;
-  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+function sendCodeWhatsApp(codeId){
+  var code=document.getElementById(codeId)?document.getElementById(codeId).textContent:'';
+  var patNome=document.getElementById('patient-nome')?document.getElementById('patient-nome').value.trim():'';
+  var msg=codeId==='code-pac-val'
+    ? 'Olá '+patNome+'! Seu laudo SmartIA está disponível.\n\nCódigo de acesso: *'+code+'*\n\nUse este código para abrir o documento que será enviado.'
+    : 'Código de acesso médico SmartIA: *'+code+'*\n\nUse para acessar a análise clínica completa.';
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
 }
 
-
-function generateShareableHTML(a) {
-  const medCode = window._medCode || '—';
-  const pacCode = window._pacCode || '—';
-  const patNome = document.getElementById('patient-nome')?.value.trim() || '';
-  const patSex  = document.getElementById('patient-sex')?.value || '';
-  const patAge  = document.getElementById('patient-age')?.value || '';
-  const profNome = document.getElementById('prof-nome')?.value.trim() || '';
-  const profCrm  = document.getElementById('prof-crm')?.value.trim() || '';
-  const profEspec= document.getElementById('prof-especialidade')?.value || '';
-  const dateStr  = new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
-
-  // Build parameter table
-  const params = (a.parametros||[]).map(p => {
-    const sc = ['alto','aumentado','critico'].includes(p.status||'') ? '#B84040'
-             : ['baixo','reduzido'].includes(p.status||'') ? '#2A6B7C' : '#1D9E75';
-    return `<tr>
-      <td style="padding:8px;border-bottom:1px solid #EEF2F4;font-size:13px;font-weight:500">${p.nome}</td>
-      <td style="padding:8px;border-bottom:1px solid #EEF2F4;font-size:13px;color:${sc};font-weight:500;text-align:center">${p.valor} ${p.unidade||''}</td>
-      <td style="padding:8px;border-bottom:1px solid #EEF2F4;font-size:12px;color:#94A8B0;text-align:center">${p.referencia||'—'}</td>
-      <td style="padding:8px;border-bottom:1px solid #EEF2F4;text-align:center"><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${sc}22;color:${sc};font-weight:500">${p.status||'—'}</span></td>
-    </tr>`;
-  }).join('');
-
-  // Doctor full content
-  const medContent = `
-    <div class="section">
-      <div class="section-title">Interpretação clínica enriquecida</div>
-      <div class="insight teal">${a.interpretacao_geral||'—'}</div>
-      ${a.perspectiva_preventiva ? `<div class="insight purple" style="margin-top:8px">${a.perspectiva_preventiva}</div>` : ''}
-    </div>
-    ${(a.sinalizadores_medico||[]).length > 0 ? `
-    <div class="section">
-      <div class="section-title" style="color:#B84040">Sinalizadores para o médico</div>
-      ${a.sinalizadores_medico.map(s=>`<div class="signal-item" style="color:${s.prioridade==='alta'?'#B84040':s.prioridade==='media'?'#C4820A':'#1D9E75'}">
-        <strong>[${(s.prioridade||'').toUpperCase()}]</strong> <span style="color:#5A7480">${s.texto}</span>
-      </div>`).join('')}
-    </div>` : ''}
-    ${params ? `<div class="section"><div class="section-title">Resultados originais</div>
-    <table style="width:100%;border-collapse:collapse"><thead><tr>
-      <th style="font-size:11px;color:#94A8B0;padding:6px 8px;border-bottom:1px solid #D8E2E6;text-align:left">Parâmetro</th>
-      <th style="font-size:11px;color:#94A8B0;padding:6px 8px;border-bottom:1px solid #D8E2E6;text-align:center">Valor</th>
-      <th style="font-size:11px;color:#94A8B0;padding:6px 8px;border-bottom:1px solid #D8E2E6;text-align:center">Referência</th>
-      <th style="font-size:11px;color:#94A8B0;padding:6px 8px;border-bottom:1px solid #D8E2E6;text-align:center">Status</th>
-    </tr></thead><tbody>${params}</tbody></table></div>` : ''}`;
-
-  // Patient simplified content
-  const pacContent = `
-    <div class="section">
-      <div class="section-title">Sumário do seu exame</div>
-      <div class="insight teal">${a.sumario_original||a.interpretacao_geral||'—'}</div>
-    </div>`;
-
-  // Lifestyle for both
-  const ev = a.estilo_vida || {};
-  const lsSections = [
-    {key:'nutricao',label:'Nutrição',color:'#1D9E75'},
-    {key:'exercicio',label:'Exercício',color:'#185FA5'},
-    {key:'sono',label:'Sono',color:'#534AB7'},
-    {key:'suplementos',label:'Suplementos sugeridos',color:'#C4820A'},
-  ];
-  let lsHtml = '';
-  lsSections.forEach(sec => {
-    const items = ev[sec.key];
-    if (!items || !items.length) return;
-    lsHtml += `<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:500;color:${sec.color};text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${sec.label}</div>
-    <div style="display:flex;flex-wrap:wrap;gap:4px">${items.map(i=>`<span style="font-size:12px;padding:3px 10px;border-radius:10px;background:${sec.color}22;color:${sec.color}">${i}</span>`).join('')}</div></div>`;
-  });
-
-  const phenoBand = a._phenoAge && a._chronoAge ? `
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;background:#EAF5F8;border-bottom:1px solid #D8E2E6">
-      <div style="padding:14px;text-align:center;border-right:1px solid #D8E2E6">
-        <div style="font-size:10px;color:#7BBFCC;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px">Idade cronológica</div>
-        <div style="font-size:26px;font-weight:500;color:#1E5060">${a._chronoAge}</div>
-        <div style="font-size:11px;color:#94A8B0">anos</div>
-      </div>
-      <div style="padding:14px;text-align:center;border-right:1px solid #D8E2E6">
-        <div style="font-size:10px;color:#7BBFCC;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px">PhenoAge estimada</div>
-        <div style="font-size:26px;font-weight:500;color:${(a._phenoAge-a._chronoAge)>2?'#B84040':'#1E5060'}">${a._phenoAge}</div>
-        <div style="font-size:11px;color:#94A8B0">anos estimados</div>
-      </div>
-      <div style="padding:14px;text-align:center">
-        <div style="font-size:10px;color:#7BBFCC;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px">Delta</div>
-        <div style="font-size:26px;font-weight:500;color:${(a._phenoAge-a._chronoAge)>2?'#B84040':'#1D9E75'}">${(a._phenoAge-a._chronoAge)>0?'+':''}${Math.round((a._phenoAge-a._chronoAge)*10)/10}</div>
-        <div style="font-size:11px;color:#94A8B0">anos</div>
-      </div>
-    </div>` : '';
-
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SmartIA · Labis · ${patNome}</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Segoe UI',system-ui,sans-serif;background:#F8FAFB;color:#2C3E45;min-height:100vh}
-  #lock-screen{position:fixed;inset:0;background:#1E5060;display:flex;align-items:center;justify-content:center;z-index:999;padding:1rem}
-  .lock-card{background:#fff;border-radius:16px;padding:2.5rem;width:100%;max-width:420px;text-align:center}
-  .lock-logo{font-size:13px;font-weight:500;color:#2A6B7C;letter-spacing:.05em;margin-bottom:1.5rem;text-transform:uppercase}
-  .lock-title{font-size:24px;font-weight:600;color:#1E5060;margin-bottom:.5rem}
-  .lock-sub{font-size:13px;color:#5A7480;margin-bottom:1.75rem;line-height:1.6}
-  .lock-input{width:100%;border:1.5px solid #D8E2E6;border-radius:8px;padding:12px;font-size:16px;font-family:monospace;text-align:center;letter-spacing:.12em;text-transform:uppercase;outline:none;color:#1E5060;background:#F8FAFB;margin-bottom:12px}
-  .lock-input:focus{border-color:#3A8FA3;background:#fff}
-  .lock-btn{width:100%;background:#2A6B7C;color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:500;cursor:pointer}
-  .lock-btn:hover{background:#1E5060}
-  .lock-error{font-size:12px;color:#B84040;margin-top:8px;min-height:18px}
-  .lock-hint{font-size:11px;color:#94A8B0;margin-top:12px;line-height:1.5}
-  #doc{display:none}
-  .header{background:#fff;padding:18px 28px;border-bottom:3px solid #2A6B7C;display:flex;justify-content:space-between;align-items:center}
-  .lab{font-size:17px;font-weight:600;color:#2A6B7C}
-  .lab-sub{font-size:10px;color:#7BBFCC;text-transform:uppercase;letter-spacing:.07em;margin-top:1px}
-  .badge{font-size:10px;padding:2px 8px;border-radius:10px;background:#EAF5F8;color:#2A6B7C;border:0.5px solid #7BBFCC;display:inline-block;margin-top:4px}
-  .meta{text-align:right}
-  .meta-name{font-size:16px;font-weight:600;color:#1E5060}
-  .meta-detail{font-size:11px;color:#94A8B0;margin-top:2px;line-height:1.7}
-  .section{background:#fff;border:0.5px solid #EEF2F4;border-radius:10px;padding:18px 20px;margin-bottom:12px}
-  .section-title{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:#94A8B0;margin-bottom:10px}
-  .insight{font-size:13px;color:#5A7480;line-height:1.7;padding:12px 14px;border-radius:8px;border-left:3px solid}
-  .insight.teal{background:#EAF5F8;border-color:#2A6B7C}
-  .insight.purple{background:#EEEDFB;border-color:#534AB7}
-  .signal-item{font-size:12px;padding:7px 10px;border-radius:6px;background:#F8FAFB;margin-bottom:5px;line-height:1.5}
-  .container{max-width:820px;margin:0 auto;padding:1.5rem}
-  .access-badge{font-size:11px;padding:4px 12px;border-radius:20px;font-weight:500;display:inline-block;margin-top:6px}
-  .footer{padding:16px 28px;border-top:3px solid #2A6B7C;font-size:11px;color:#94A8B0;line-height:1.6;text-align:center;background:#fff;margin-top:1.5rem}
-</style>
-</head>
-<body>
-
-<div id="lock-screen">
-  <div class="lock-card">
-    <div class="lock-logo">Labis Life Diagnostics · SmartIA</div>
-    <div class="lock-title">🔐 Documento protegido</div>
-    <div class="lock-sub">Este laudo é confidencial.<br>Insira seu código de acesso para visualizar.</div>
-    <input type="text" class="lock-input" id="code-input" placeholder="MED-XXXXXX ou PAC-XXXXXX" maxlength="10" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9-]/g,'')">
-    <button class="lock-btn" onclick="tryUnlock()">Acessar documento →</button>
-    <div class="lock-error" id="lock-error"></div>
-    <div class="lock-hint">Código recebido do laboratório Labis.<br>Médicos: código MED- · Pacientes: código PAC-</div>
-  </div>
-</div>
-
-<div id="doc">
-  <div class="header">
-    <div>
-      <div class="lab">Labis Life Diagnostics</div>
-      <div class="lab-sub">Medicina Diagnóstica · Análise de Precisão</div>
-      <span class="badge">✨ SmartIA · Análise Enriquecida</span>
-    </div>
-    <div class="meta">
-      <div class="meta-name">${patNome||'—'}</div>
-      <div class="meta-detail">
-        ${[patSex, patAge ? patAge+' anos' : ''].filter(Boolean).join(' · ')}<br>
-        ${profNome ? `Solicitante: ${profNome}${profCrm?' · '+profCrm:''}<br>` : ''}
-        ${profEspec ? profEspec+' · ' : ''}${dateStr}
-      </div>
-      <span class="access-badge" id="access-type-badge"></span>
-    </div>
-  </div>
-  ${phenoBand}
-  <div class="container" id="doc-content"></div>
-  <div class="footer">
-    Esta análise é um suporte informativo gerado pelo SmartIA · Labis Life Diagnostics e não substitui a avaliação médica.<br>
-    PhenoAge: Levine et al. (Nature Aging, 2018). Ref: LAB-${Date.now().toString().slice(-6)} · ${dateStr}
-  </div>
-</div>
-
-<scr'+'ipt>
-  const MED_CODE = '${medCode}';
-  const PAC_CODE = '${pacCode}';
-  const MED_CONTENT = ${JSON.stringify(medContent)};
-  const PAC_CONTENT = ${JSON.stringify(pacContent + (lsHtml ? '<div class="section"><div class="section-title">Recomendações de estilo de vida</div>' + lsHtml + '</div>' : ''))};
-  const LS_HTML = ${JSON.stringify(lsHtml)};
-
-  let attempts = 0;
-  let blocked = false;
-
-  function tryUnlock() {
-    if (blocked) { document.getElementById('lock-error').textContent = 'Bloqueado. Aguarde 10 minutos.'; return; }
-    const code = document.getElementById('code-input').value.trim().toUpperCase();
-    if (code === MED_CODE) {
-      unlock('med');
-    } else if (code === PAC_CODE) {
-      unlock('pac');
-    } else {
-      attempts++;
-      if (attempts >= 3) {
-        blocked = true;
-        document.getElementById('lock-error').textContent = '3 tentativas incorretas. Bloqueado por 10 minutos.';
-        setTimeout(() => { blocked = false; attempts = 0; document.getElementById('lock-error').textContent = ''; }, 600000);
-      } else {
-        document.getElementById('lock-error').textContent = \`Código incorreto. \${3-attempts} tentativa(s) restante(s).\`;
-      }
-    }
-  }
-
-  function unlock(role) {
-    document.getElementById('lock-screen').style.display = 'none';
-    document.getElementById('doc').style.display = 'block';
-    const badge = document.getElementById('access-type-badge');
-    if (role === 'med') {
-      badge.textContent = '👨‍⚕️ Acesso médico — visão completa';
-      badge.style.cssText = 'background:#EAF5F8;color:#1E5060;font-size:11px;padding:4px 12px;border-radius:20px;font-weight:500;display:inline-block;margin-top:6px';
-      document.getElementById('doc-content').innerHTML = MED_CONTENT + (LS_HTML ? '<div class="section"><div class="section-title">Estilo de vida</div>' + LS_HTML + '</div>' : '');
-    } else {
-      badge.textContent = '🧑 Acesso paciente — visão simplificada';
-      badge.style.cssText = 'background:#EEEDFB;color:#26215C;font-size:11px;padding:4px 12px;border-radius:20px;font-weight:500;display:inline-block;margin-top:6px';
-      document.getElementById('doc-content').innerHTML = PAC_CONTENT;
-    }
-  }
-
-  document.getElementById('code-input').addEventListener('keydown', e => { if(e.key === 'Enter') tryUnlock(); });
-</scr'+'ipt>
-</body>
-</html>`;
-}
-
-
-
-function openShare(){document.getElementById('share-modal').classList.add('visible')}
-function closeShare(){document.getElementById('share-modal').classList.remove('visible')}
-function copyLink(){
-  if(!lastAnalysis) return;
-  const txt=`SmartIA · Labis Life Diagnostics\nExame: ${lastAnalysis.tipo_exame}\n\n${lastAnalysis.interpretacao_geral}\n\n${lastAnalysis.perspectiva_preventiva||''}`;
-  navigator.clipboard.writeText(txt).then(()=>{
-    document.getElementById('copy-label').textContent='✓ Copiado!';
-    setTimeout(()=>document.getElementById('copy-label').textContent='Copiar texto da análise',2500);
-  });
-}
-function exportPDF(){window.print()}
-
-/* ══════════════════════════════════════════
-   ASSESSMENT INTEGRATION
-   ══════════════════════════════════════════ */
-let assessmentData = null;
-
-function generateAssessmentLink(){
-  const patNome = document.getElementById('patient-nome')?.value.trim()||'';
-  // Build URL pointing to SmartIA_Assessment.html in same folder
-  const base = window.location.href.replace(/[^/]*$/, '') + 'SmartIA_Assessment.html';
-  const params = new URLSearchParams();
-  if(patNome) params.set('paciente', patNome);
-  const fullLink = base + '?' + params.toString();
-
-  document.getElementById('link-result').style.display = 'block';
-  document.getElementById('link-text').textContent = fullLink;
-
-  const msg = `Olá${patNome?' '+patNome:''}! 👋\n\nO Labis Life Diagnostics preparou um breve questionário de saúde para complementar seus exames.\n\nPor favor, acesse o link abaixo e responda em cerca de 10 minutos:\n${fullLink}\n\nAo final você receberá um código — nos envie ele de volta por aqui. 🙏`;
-  document.getElementById('link-wa').href = 'https://wa.me/?text='+encodeURIComponent(msg);
-  document.getElementById('link-email').href = `mailto:${patNome||''}?subject=Assessment de Saúde SmartIA - Labis&body=${encodeURIComponent(msg)}`;
-}
-
-function copyAssessmentLink(){
-  const link = document.getElementById('link-text').textContent;
-  navigator.clipboard.writeText(link).then(()=>{
-    event.target.textContent='✓ Copiado!';
-    setTimeout(()=>event.target.textContent='📋 Copiar link',2000);
-  });
-}
-
-function checkAssessmentCode(code){
-  const status = document.getElementById('assessment-status');
-  if(code.length < 4){ status.style.display='none'; assessmentData=null; return; }
-  // Try to load from sessionStorage (same browser session)
-  try{
-    const stored = sessionStorage.getItem('sma_'+code.trim());
-    if(stored){
-      assessmentData = JSON.parse(stored);
-      showAssessmentStatus('✓ Assessment carregado — '+getAssessmentSummary(), 'ok');
-      return;
-    }
-  }catch(e){}
-  // Code entered but not found locally — mark as manual
-  assessmentData = {_code: code, _manual: true};
-  showAssessmentStatus('Código registrado — arquivo JSON necessário para carregar respostas completas', 'warn');
-}
-
-function loadAssessmentJSON(input){
-  const file = input.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try{
-      const parsed = JSON.parse(e.target.result);
-      assessmentData = parsed.respostas || parsed;
-      const code = assessmentData._code || parsed._codigo || '—';
-      document.getElementById('assessment-code').value = code;
-      showAssessmentStatus('✓ Assessment importado com sucesso — '+getAssessmentSummary(), 'ok');
-    }catch(err){
-      showAssessmentStatus('⚠ Arquivo inválido — use o JSON gerado pelo SmartIA Assessment', 'error');
-    }
-  };
-  reader.readAsText(file);
-}
-
-function showAssessmentStatus(msg, type){
-  const el = document.getElementById('assessment-status');
-  el.style.display = 'block';
-  el.textContent = msg;
-  el.style.background = type==='ok'?'var(--success-bg)':type==='warn'?'var(--warning-bg)':'var(--danger-bg)';
-  el.style.color = type==='ok'?'var(--success)':type==='warn'?'var(--warning)':'var(--danger)';
-}
-
+/* ── ASSESSMENT ── */
 function getAssessmentSummary(){
   if(!assessmentData) return '';
   const parts = [];
@@ -2766,6 +1991,73 @@ function buildAssessmentContext(){
 }
 
 document.getElementById('share-modal').addEventListener('click',function(e){if(e.target===this)closeShare()});
+function loadAssessmentJSON(input){
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try{
+      const parsed = JSON.parse(e.target.result);
+      assessmentData = parsed.respostas || parsed;
+      const code = assessmentData._code || parsed._codigo || '—';
+      document.getElementById('assessment-code').value = code;
+      showAssessmentStatus('✓ Assessment importado com sucesso — '+getAssessmentSummary(), 'ok');
+    }catch(err){
+      showAssessmentStatus('⚠ Arquivo inválido — use o JSON gerado pelo SmartIA Assessment', 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function showAssessmentStatus(msg, type){
+  const el = document.getElementById('assessment-status');
+  el.style.display = 'block';
+  el.textContent = msg;
+  el.style.background = type==='ok'?'var(--success-bg)':type==='warn'?'var(--warning-bg)':'var(--danger-bg)';
+  el.style.color = type==='ok'?'var(--success)':type==='warn'?'var(--warning)':'var(--danger)';
+}
+
+
+function checkAssessmentCode(code){
+  var status=document.getElementById('assessment-status');
+  if(!status) return;
+  if(code.length<4){status.style.display='none';assessmentData=null;return;}
+  try{
+    var stored=sessionStorage.getItem('sma_'+code.trim());
+    if(stored){assessmentData=JSON.parse(stored);showAssessmentStatus('✓ Assessment carregado — '+getAssessmentSummary(),'ok');return;}
+  }catch(e){}
+  assessmentData={_code:code,_manual:true};
+  showAssessmentStatus('Código registrado — importe o arquivo JSON para carregar respostas completas','warn');
+}
+
+function generateAssessmentLink(){
+  var patNome=document.getElementById('patient-nome')?document.getElementById('patient-nome').value.trim():'';
+  var base=window.location.href.replace(/[^/]*$/,'')+'SmartIA_Assessment.html';
+  var params=new URLSearchParams();
+  if(patNome) params.set('paciente',patNome);
+  var fullLink=base+'?'+params.toString();
+  var lr=document.getElementById('link-result');
+  var lt=document.getElementById('link-text');
+  if(lr) lr.style.display='block';
+  if(lt) lt.textContent=fullLink;
+  var msg='Olá'+(patNome?' '+patNome:'')+'!\n\nO Labis preparou um questionário de saúde.\nAcesse: '+fullLink+'\n\nAo final baixe o arquivo JSON e envie para o laboratório.';
+  var wa=document.getElementById('link-wa');
+  var em=document.getElementById('link-email');
+  if(wa) wa.href='https://wa.me/?text='+encodeURIComponent(msg);
+  if(em) em.href='mailto:?subject=Assessment SmartIA&body='+encodeURIComponent(msg);
+}
+
+function copyAssessmentLink(){
+  var link=document.getElementById('link-text');
+  if(!link) return;
+  navigator.clipboard.writeText(link.textContent).then(function(){
+    var btn=event.target;var orig=btn.textContent;
+    btn.textContent='✓ Copiado!';setTimeout(function(){btn.textContent=orig;},2000);
+  });
+}
+
+document.getElementById('share-modal').addEventListener('click',function(e){if(e.target===this)closeShare();});
+
 </script>
 </body>
 </html>
