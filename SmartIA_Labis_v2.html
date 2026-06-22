@@ -1091,61 +1091,10 @@ const loadingMsgs=[
 
 /* ── ANALYZE ── */
 async function analyze(){
-  // Browser compatibility check
-  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-  if(isSafari){
-    const proceed = confirm('⚠️ Safari pode bloquear chamadas diretas à API.\n\nRecomendamos usar Chrome ou Edge para melhor compatibilidade.\n\nDeseja tentar mesmo assim?');
-    if(!proceed) return;
-  }
-
-  // Get and validate API key FIRST, before any other use
   const apiKey=document.getElementById('api-key-input').value.trim();
   if(!apiKey.startsWith('sk-ant')) return showError('Configure a chave de API da Anthropic antes de continuar.');
   if(!laudoText) return showError('Carregue o laudo em PDF antes de analisar.');
 
-  // Pre-flight: test API key with minimal request before full analysis
-  document.getElementById('loading-msg').textContent = 'Verificando conexão com a API...';
-  document.getElementById('loading').classList.add('visible');
-  document.getElementById('btn-analyze').disabled = true;
-
-  try {
-    const testRes = await fetch('/.netlify/functions/proxy', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 10,
-        messages: [{ role: 'user', content: 'ok' }]
-      })
-    });
-    if(!testRes.ok){
-      const errData = await testRes.json();
-      const errType = errData.error?.type || '';
-      const errMsg  = errData.error?.message || testRes.status;
-      document.getElementById('loading').classList.remove('visible');
-      document.getElementById('btn-analyze').disabled = false;
-      if(errType === 'authentication_error'){
-        showError('❌ API key inválida ou revogada. Acesse console.anthropic.com, crie uma nova chave e cole aqui.');
-      } else if(errType === 'insufficient_quota' || testRes.status === 429){
-        showError('❌ Créditos insuficientes. Acesse console.anthropic.com → Billing e adicione créditos.');
-      } else {
-        let rawBody = '';
-        try { rawBody = JSON.stringify(errData); } catch(e) { rawBody = String(errData); }
-        showError('❌ Erro na API (código ' + testRes.status + '): ' + errMsg + '\n\nResposta completa: ' + rawBody);
-      }
-      return;
-    }
-    // API OK — proceed to full analysis
-  } catch(connErr) {
-    document.getElementById('loading').classList.remove('visible');
-    document.getElementById('btn-analyze').disabled = false;
-    showError('❌ Não foi possível conectar à API da Anthropic.\n\nVerifique:\n• Sua conexão com a internet\n• Se a API key começa com sk-ant-\n• Se há créditos na conta (console.anthropic.com)\n\nDetalhe técnico: ' + connErr.message);
-    return;
-  }
   document.getElementById('btn-analyze').disabled=true;
   document.getElementById('loading').classList.add('visible');
 
