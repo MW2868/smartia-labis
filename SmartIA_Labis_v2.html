@@ -1133,7 +1133,9 @@ async function analyze(){
       } else if(errType === 'insufficient_quota' || testRes.status === 429){
         showError('❌ Créditos insuficientes. Acesse console.anthropic.com → Billing e adicione créditos.');
       } else {
-        showError('❌ Erro na API: ' + errMsg + ' (código ' + testRes.status + ')');
+        let rawBody = '';
+        try { rawBody = JSON.stringify(errData); } catch(e) { rawBody = String(errData); }
+        showError('❌ Erro na API (código ' + testRes.status + '): ' + errMsg + '\n\nResposta completa: ' + rawBody);
       }
       return;
     }
@@ -1167,7 +1169,12 @@ async function analyze(){
         messages:[{role:'user',content:buildPrompt()}]
       })
     });
-    if(!response.ok){const err=await response.json();throw new Error(err.error?.message||'Erro na API')}
+    if(!response.ok){
+      let errBody=''; 
+      try{errBody=await response.json();}catch(e){errBody={}}
+      const errMsg = errBody.error?.message || errBody.error || JSON.stringify(errBody);
+      throw new Error('HTTP ' + response.status + ': ' + errMsg);
+    }
     const data=await response.json();
     let raw=data.content[0].text.trim();
     raw=raw.replace(/^```json\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/i,'');
