@@ -1098,6 +1098,11 @@ async function analyze(){
     if(!proceed) return;
   }
 
+  // Get and validate API key FIRST, before any other use
+  const apiKey=document.getElementById('api-key-input').value.trim();
+  if(!apiKey.startsWith('sk-ant')) return showError('Configure a chave de API da Anthropic antes de continuar.');
+  if(!laudoText) return showError('Carregue o laudo em PDF antes de analisar.');
+
   // Pre-flight: test API key with minimal request before full analysis
   document.getElementById('loading-msg').textContent = 'Verificando conexão com a API...';
   document.getElementById('loading').classList.add('visible');
@@ -1109,8 +1114,7 @@ async function analyze(){
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-calls': 'true'
+        'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
@@ -1140,10 +1144,6 @@ async function analyze(){
     showError('❌ Não foi possível conectar à API da Anthropic.\n\nVerifique:\n• Sua conexão com a internet\n• Se a API key começa com sk-ant-\n• Se há créditos na conta (console.anthropic.com)\n\nDetalhe técnico: ' + connErr.message);
     return;
   }
-  const apiKey=document.getElementById('api-key-input').value.trim();
-  if(!apiKey.startsWith('sk-ant')) return showError('Configure a chave de API da Anthropic antes de continuar.');
-  if(!laudoText) return showError('Carregue o laudo em PDF antes de analisar.');
-
   document.getElementById('btn-analyze').disabled=true;
   document.getElementById('loading').classList.add('visible');
 
