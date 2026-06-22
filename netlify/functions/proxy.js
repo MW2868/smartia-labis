@@ -1,4 +1,6 @@
 exports.handler = async function(event, context) {
+  // Increase function timeout
+  context.callbackWaitsForEmptyEventLoop = false;
 
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -33,6 +35,22 @@ exports.handler = async function(event, context) {
     const https = require('https');
     const body = event.body || '{}';
 
+    // Parse body and set stream:false to get complete response faster
+    let parsedBody;
+    try {
+      parsedBody = JSON.parse(body);
+    } catch(e) {
+      parsedBody = {};
+    }
+    
+    // Ensure stream is false and reduce tokens if needed
+    parsedBody.stream = false;
+    if (!parsedBody.max_tokens || parsedBody.max_tokens > 4096) {
+      parsedBody.max_tokens = 4096;
+    }
+
+    const finalBody = JSON.stringify(parsedBody);
+
     const result = await new Promise((resolve, reject) => {
       const options = {
         hostname: 'api.anthropic.com',
@@ -40,10 +58,11 @@ exports.handler = async function(event, context) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(body),
+          'Content-Length': Buffer.byteLength(finalBody),
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
-        }
+        },
+        timeout: 55000  // 55 second timeout on the HTTPS request
       };
 
       const req = https.request(options, (res) => {
@@ -52,8 +71,13 @@ exports.handler = async function(event, context) {
         res.on('end', () => resolve({ status: res.statusCode, body: data }));
       });
 
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Request to Anthropic timed out after 55s'));
+      });
+
       req.on('error', reject);
-      req.write(body);
+      req.write(finalBody);
       req.end();
     });
 
