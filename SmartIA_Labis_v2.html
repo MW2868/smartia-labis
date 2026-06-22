@@ -1201,63 +1201,6 @@ const loadingMsgs=[
   'Finalizando o documento SmartIA…'
 ];
 
-/* ── ANALYZE ── */
-/* ── ANALYZE ── */
-function parseJsonRobust(raw){
-  // 1. Try direct parse first
-  try{ return JSON.parse(raw) } catch(e1){}
-
-  // 2. Try to find the outermost { } block
-  const start = raw.indexOf('{');
-  if(start === -1) throw new Error('Nenhum JSON encontrado na resposta');
-  
-  // Walk from end, trying progressively shorter strings until valid JSON
-  let end = raw.lastIndexOf('}');
-  while(end > start){
-    try{
-      const candidate = raw.substring(start, end+1);
-      return JSON.parse(candidate);
-    } catch(e){ end = raw.lastIndexOf('}', end-1); }
-  }
-
-  // 3. Try auto-closing truncated JSON
-  const partial = raw.substring(start);
-  const autoClose = autoCloseJson(partial);
-  try{ return JSON.parse(autoClose) } catch(e2){}
-
-  throw new Error('JSON Parse error: resposta truncada — tente novamente');
-}
-
-function autoCloseJson(s){
-  // Count open structures and close them
-  const stack=[];
-  let inStr=false, escape=false;
-  for(let i=0;i<s.length;i++){
-    const c=s[i];
-    if(escape){escape=false;continue}
-    if(c==='\\' && inStr){escape=true;continue}
-    if(c==='"'){inStr=!inStr;continue}
-    if(inStr) continue;
-    if(c==='{') stack.push('}');
-    else if(c==='[') stack.push(']');
-    else if(c==='}' || c===']') stack.pop();
-  }
-  // Remove trailing comma if present before closing
-  let result=s.replace(/,\s*$/, '');
-  if(inStr) result+='"';  // close open string
-  return result + stack.reverse().join('');
-}
-
-
-const loadingMsgs=[
-  'Lendo o laudo e extraindo biomarcadores…',
-  'Calculando PhenoAge (Levine et al. 2018)…',
-  'Avaliando scores por sistema orgânico…',
-  'Gerando interpretação clínica enriquecida…',
-  'Elaborando perspectiva preventiva…',
-  'Finalizando o documento SmartIA…'
-];
-
 async function analyze(){
   const apiKey=document.getElementById('api-key-input').value.trim();
   if(!apiKey.startsWith('sk-ant')) return showError('Configure a chave de API da Anthropic antes de continuar.');
@@ -1322,6 +1265,12 @@ async function analyze(){
     showError(errMsg);
   }
 }
+
+
+
+
+
+/* ── ANALYZE ── */
 
 
 
