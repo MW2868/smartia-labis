@@ -283,6 +283,9 @@ nav{background:var(--white);border-bottom:3px solid var(--teal-dark);padding:0 2
 </style>
 <script>
 function goTo(p){
+  if(p==='upload' && document.getElementById('laudos-list') && document.getElementById('laudos-list').children.length===0){
+    setTimeout(function(){ if(typeof addLaudoSlot==='function') addLaudoSlot(); }, 100);
+  }
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
   var el=document.getElementById('page-'+p);
   if(el){el.classList.add('active');}
@@ -420,6 +423,9 @@ function copyCode(id){
 }
 
 
+/* ── SHARED STATE (declared in head) ── */
+var assessmentData = null;
+
 /* ── FILE HANDLERS (in head for reliability) ── */
 async function extractPdfText(file){
   var buf=await file.arrayBuffer();
@@ -470,11 +476,11 @@ function loadAssessmentJSON(input){
   const file = input.files[0];
   if(!file) return;
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = function(e) {
     try{
-      const parsed = JSON.parse(e.target.result);
+      var parsed = JSON.parse(e.target.result);
       assessmentData = parsed.respostas || parsed;
-      const code = assessmentData._code || parsed._codigo || '—';
+      var code = assessmentData._code || parsed._codigo || '—';
       document.getElementById('assessment-code').value = code;
       showAssessmentStatus('✓ Assessment importado com sucesso — '+getAssessmentSummary(), 'ok');
     }catch(err){
@@ -483,6 +489,136 @@ function loadAssessmentJSON(input){
   };
   reader.readAsText(file);
 }
+
+
+function showAssessmentStatus(msg, type){
+  const el = document.getElementById('assessment-status');
+  el.style.display = 'block';
+  el.textContent = msg;
+  el.style.background = type==='ok'?'var(--success-bg)':type==='warn'?'var(--warning-bg)':'var(--danger-bg)';
+  el.style.color = type==='ok'?'var(--success)':type==='warn'?'var(--warning)':'var(--danger)';
+}
+
+function getAssessmentSummary(){
+  if(!assessmentData) return '';
+  const parts = [];
+  if(assessmentData.paciente_nome) parts.push(assessmentData.paciente_nome);
+  if(assessmentData.ativ_freq) parts.push('atividade: '+assessmentData.ativ_freq);
+  if(assessmentData.estresse_nivel) parts.push('estresse: '+assessmentData.estresse_nivel+'/5');
+  return parts.length>0 ? parts.join(' · ') : 'dados carregados';
+}
+
+/* ── MULTI-LAUDO ── */
+var laudoSlots = []; // [{type, subtype, text, filename}]
+var laudoSlotCount = 0;
+
+var laudoTypeOptions = [
+  {value:'clinica', label:'Análises clínicas'},
+  {value:'genetica', label:'Genética / genômica'},
+  {value:'microbiota_vaginal', label:'Microbiota vaginal (Febiome)'},
+  {value:'microbiota_intestinal', label:'Microbiota intestinal'},
+  {value:'microbiota_seminal', label:'Microbiota seminal'},
+];
+
+function addLaudoSlot() {
+  if(laudoSlotCount >= 3) {
+    alert('Máximo de 3 laudos por análise.');
+    return;
+  }
+  var id = 'laudo-slot-' + laudoSlotCount;
+  laudoSlotCount++;
+
+  var typeOptions = laudoTypeOptions.map(function(o) {
+    return '<option value="'+o.value+'">'+o.label+'</option>';
+  }).join('');
+
+  var slot = document.createElement('div');
+  slot.id = id;
+  slot.style.cssText = 'background:var(--gray-50);border:0.5px solid var(--gray-200);border-radius:var(--r);padding:.85rem;display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center';
+  slot.innerHTML =
+    '<div>' +
+    '<div style="font-size:11px;color:var(--gray-600);margin-bottom:4px;font-weight:500">Tipo de laudo</div>' +
+    '<select onchange="updateSlotType(\''+id+'\',this.value)" style="width:100%;border:0.5px solid var(--gray-200);border-radius:var(--r-sm);padding:7px 10px;font-size:12px;font-family:var(--font-body);background:var(--white);color:var(--gray-800);outline:none">'+typeOptions+'</select>' +
+    '</div>' +
+    '<div>' +
+    '<div style="font-size:11px;color:var(--gray-600);margin-bottom:4px;font-weight:500">Arquivo PDF</div>' +
+    '<label style="display:flex;align-items:center;gap:6px;border:0.5px dashed var(--gray-200);border-radius:var(--r-sm);padding:7px 10px;font-size:12px;color:var(--gray-400);cursor:pointer;background:var(--white)" id="'+id+'-label">' +
+    '📄 Selecionar PDF' +
+    '<input type="file" accept=".pdf" style="display:none" onchange="handleSlotFile(\''+id+'\',this)">' +
+    '</label>' +
+    '</div>' +
+    '<button onclick="removeLaudoSlot(\''+id+'\')" style="background:none;border:none;color:var(--gray-400);cursor:pointer;font-size:18px;padding:4px;margin-top:16px">×</button>';
+
+  document.getElementById('laudos-list').appendChild(slot);
+
+  // Update global type tracking
+  laudoSlots.push({id: id, type: 'clinica', subtype: '', text: '', filename: ''});
+
+  // Update add button visibility
+  if(laudoSlotCount >= 3) {
+    document.getElementById('btn-add-laudo').style.display = 'none';
+  }
+
+  // Initialize legacy vars for first slot
+  if(laudoSlotCount === 1) {
+    currentType = 'clinica';
+  }
+}
+
+function updateSlotType(id, value) {
+  var slot = laudoSlots.find(function(s){ return s.id === id; });
+  if(!slot) return;
+  slot.type = value.split('_')[0];
+  slot.subtype = value.includes('_') ? value.split('_').slice(1).join('_') : '';
+}
+
+function removeLaudoSlot(id) {
+  var el = document.getElementById(id);
+  if(el) el.remove();
+  laudoSlots = laudoSlots.filter(function(s){ return s.id !== id; });
+  laudoSlotCount--;
+  document.getElementById('btn-add-laudo').style.display = '';
+}
+
+async function handleSlotFile(id, input) {
+  var file = input.files[0];
+  if(!file) return;
+  var slot = laudoSlots.find(function(s){ return s.id === id; });
+  if(!slot) return;
+
+  var label = document.getElementById(id+'-label');
+  if(label) label.innerHTML = '⏳ Lendo...';
+
+  try {
+    var text = await extractPdfText(file);
+    slot.text = text;
+    slot.filename = file.name;
+    if(label) {
+      label.innerHTML = '<span style="color:var(--success-dark)">✓ '+file.name+'</span>';
+    }
+    // Keep backward compat: set laudoText to first slot
+    if(laudoSlots.indexOf(slot) === 0) {
+      laudoText = text;
+      currentType = slot.type;
+      currentSubtype = slot.subtype || 'intestinal';
+    }
+  } catch(e) {
+    if(label) label.innerHTML = '⚠ Erro ao ler PDF';
+  }
+}
+
+function getLaudosContext() {
+  var active = laudoSlots.filter(function(s){ return s.text; });
+  if(active.length === 0) return '';
+  if(active.length === 1) return active[0].text;
+
+  // Multiple laudos: combine with type labels
+  return active.map(function(s, i) {
+    var typeLabel = laudoTypeOptions.find(function(o){ return o.value === s.type+(s.subtype?'_'+s.subtype:''); });
+    return '=== LAUDO '+(i+1)+': '+(typeLabel ? typeLabel.label.toUpperCase() : s.type.toUpperCase())+' ===\n'+s.text;
+  }).join('\n\n');
+}
+
 </script>
 </head>
 <body>
@@ -640,23 +776,25 @@ function loadAssessmentJSON(input){
       </div>
     </div>
 
-    <!-- UPLOAD LAUDO + REFS -->
-    <div class="grid2" style="margin-bottom:1.25rem">
-      <div class="upload-zone" id="zone-laudo">
-        <input type="file" accept=".pdf" id="input-laudo" onchange="handleLaudo(this)">
-        <span class="upload-icon">📄</span>
-        <div class="upload-title">Laudo original</div>
-        <div class="upload-hint">Arraste ou clique · PDF</div>
-        <div class="upload-filename" id="laudo-name"></div>
+        <!-- UPLOAD LAUDOS MÚLTIPLOS -->
+    <div class="upload-card" style="margin-bottom:1.25rem">
+      <div class="section-label">📄 Laudos do paciente</div>
+      <div style="font-size:12px;color:var(--gray-400);margin-bottom:.85rem">Adicione até 3 laudos de tipos diferentes. O SmartIA analisa todos e gera um Mapa de Saúde integrado.</div>
+      <div id="laudos-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px"></div>
+      <button onclick="addLaudoSlot()" id="btn-add-laudo"
+        style="display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--teal-dark);border:1px dashed var(--teal-light);border-radius:var(--r-sm);padding:8px 16px;font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font-body);width:100%;justify-content:center">
+        + Adicionar laudo
+      </button>
+      <div style="margin-top:1rem;padding-top:.85rem;border-top:0.5px solid var(--gray-200)">
+        <div class="section-label" style="margin-bottom:.5rem">📚 Referências científicas (opcional)</div>
+        <div class="upload-zone" id="zone-refs" style="cursor:default;padding:1rem">
+          <input type="file" accept=".pdf" multiple id="input-refs" onchange="handleRefs(this)" style="cursor:pointer">
+          <span style="font-size:20px">📚</span>
+          <div class="upload-title" style="font-size:12px;margin-top:4px">PDFs de artigos · múltiplos arquivos</div>
+          <div class="upload-filename" id="refs-count"></div>
+        </div>
       </div>
-      <div class="upload-zone" id="zone-refs" style="cursor:default">
-        <input type="file" accept=".pdf" multiple id="input-refs" onchange="handleRefs(this)" style="cursor:pointer">
-        <span class="upload-icon">📚</span>
-        <div class="upload-title">Referências científicas</div>
-        <div class="upload-hint">PDFs de artigos · múltiplos arquivos</div>
-        <div class="upload-filename" id="refs-count"></div>
-      </div>
-    </div>
+    </div>    </div>
 
     <!-- LINKS -->
     <div class="upload-card">
@@ -682,7 +820,7 @@ function loadAssessmentJSON(input){
         </div>
         <label style="display:inline-flex;align-items:center;gap:6px;background:var(--white);border:0.5px solid var(--gray-200);border-radius:var(--r-sm);padding:8px 12px;font-size:12px;color:var(--gray-600);cursor:pointer;white-space:nowrap;height:37px">
           📂 Importar JSON
-          <input type="file" accept=".json" style="display:none" onchange="loadAssessmentJSON(this)">
+          <input type="file" accept=".json,application/json,text/plain" style="display:none" onchange="loadAssessmentJSON(this)">
         </label>
       </div>
       <div id="assessment-status" class="assessment-status"></div>
@@ -1300,7 +1438,10 @@ const loadingMsgs=[
 async function analyze(){
   const apiKey=document.getElementById('api-key-input').value.trim();
   if(!apiKey.startsWith('sk-ant')) return showError('Configure a chave de API da Anthropic antes de continuar.');
-  if(!laudoText) return showError('Carregue o laudo em PDF antes de analisar.');
+  // Support both multi-laudo and legacy single laudo
+  var combinedLaudoText = typeof getLaudosContext === 'function' ? getLaudosContext() : laudoText;
+  if(!combinedLaudoText && !laudoText) return showError('Adicione pelo menos um laudo em PDF antes de analisar.');
+  if(!combinedLaudoText) combinedLaudoText = laudoText;
 
   document.getElementById('btn-analyze').disabled=true;
   document.getElementById('loading').classList.add('visible');
