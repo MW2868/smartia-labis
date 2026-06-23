@@ -389,6 +389,26 @@ function copyAssessmentLink(){
   });
 }
 
+function formatCPF(input){
+  var v = input.value.replace(/\D/g,'').substring(0,11);
+  if(v.length > 9) v = v.replace(/^(\d{3})(\d{3})(\d{3})(\d{0,2}).*/, '$1.$2.$3-$4');
+  else if(v.length > 6) v = v.replace(/^(\d{3})(\d{3})(\d{0,3}).*/, '$1.$2.$3');
+  else if(v.length > 3) v = v.replace(/^(\d{3})(\d{0,3}).*/, '$1.$2');
+  input.value = v;
+  var hint = document.getElementById('cpf-hint');
+  if(!hint) return;
+  var digits = v.replace(/\D/g,'');
+  if(digits.length === 0){ hint.style.display='none'; return; }
+  if(digits.length === 11){
+    hint.textContent = '✓ CPF válido';
+    hint.style.color = 'var(--success-dark)';
+  } else {
+    hint.textContent = digits.length+'/11 dígitos';
+    hint.style.color = 'var(--warning-dark)';
+  }
+  hint.style.display = 'block';
+}
+
 function copyCode(id){
   var val=document.getElementById(id).textContent;
   navigator.clipboard.writeText(val).then(function(){
@@ -503,6 +523,21 @@ function copyCode(id){
           </select>
         </div>
         <div><div class="field-label">Idade (anos)</div><input type="number" id="patient-age" class="field-input" min="1" max="120" placeholder="Ex: 38"></div>
+      </div>
+      <div class="grid3" style="margin-top:10px">
+        <div>
+          <div class="field-label">CPF do paciente</div>
+          <input type="text" id="patient-cpf" class="field-input" placeholder="000.000.000-00" maxlength="14"
+            oninput="formatCPF(this)">
+          <div id="cpf-hint" style="font-size:11px;margin-top:3px;display:none"></div>
+        </div>
+        <div>
+          <div class="field-label">Estado (UF)</div>
+          <input type="text" id="patient-uf" class="field-input" placeholder="Ex: SP" maxlength="2"
+            style="text-transform:uppercase"
+            oninput="this.value=this.value.toUpperCase().replace(/[^A-Z]/g,'')">
+        </div>
+        <div></div>
       </div>
       <div style="margin-top:10px">
         <div class="field-label">Contexto clínico relevante (opcional)</div>
@@ -1288,9 +1323,12 @@ function renderResult(a){
 
   // Header
   document.getElementById('meta-patient').textContent=patNome||'Paciente';
+  var patCpf=document.getElementById('patient-cpf')?document.getElementById('patient-cpf').value:'';
+  var patUf=document.getElementById('patient-uf')?document.getElementById('patient-uf').value.toUpperCase():'';
   var detailParts=[];
   if(patSex) detailParts.push(patSex);
   if(patAge) detailParts.push(patAge+' anos');
+  if(patUf) detailParts.push(patUf);
   var detailHtml=(detailParts.length?detailParts.join(' · ')+'<br>':'');
   if(profNome) detailHtml+='Solicitante: '+profNome+(profCrm?' · '+profCrm:'')+'<br>';
   if(profEspec) detailHtml+=profEspec+' · ';
@@ -1851,12 +1889,14 @@ function generateAccessCodes(){
   var profCrm=document.getElementById('prof-crm')?document.getElementById('prof-crm').value.trim():'';
   var patNome=document.getElementById('patient-nome')?document.getElementById('patient-nome').value.trim():'';
   var patAge=document.getElementById('patient-age')?document.getElementById('patient-age').value:'';
+  var patCpf=document.getElementById('patient-cpf')?document.getElementById('patient-cpf').value.replace(/\D/g,''):'';
+  var patUf=document.getElementById('patient-uf')?document.getElementById('patient-uf').value.toUpperCase():'';
   var crmVal=profCrm.toUpperCase().replace(/\s/g,'');
   if(profCrm&&!/^\d{5,6}\/[A-Z]{2}$/.test(crmVal)){
     showError('Formato de CRM inválido. Use: 123456/SP');return null;
   }
   var medCode='MED-'+simpleHash(profNome+profCrm.toUpperCase()+ts);
-  var pacCode='PAC-'+simpleHash(patNome+patAge+ts);
+  var pacCode='PAC-'+simpleHash(patNome+patCpf+patUf+patAge+ts);
   window._medCode=medCode;window._pacCode=pacCode;
   return {medCode:medCode,pacCode:pacCode,ts:ts};
 }
