@@ -418,6 +418,71 @@ function copyCode(id){
     setTimeout(function(){btn.textContent=orig;},2000);
   });
 }
+
+
+/* ── FILE HANDLERS (in head for reliability) ── */
+async function extractPdfText(file){
+  var buf=await file.arrayBuffer();
+  var pdf=await pdfjsLib.getDocument({data:buf,verbosity:0,isEvalSupported:false}).promise;
+  var totalPages=pdf.numPages;
+  var pageTexts=[];
+  for(var i=1;i<=Math.min(totalPages,30);i++){
+    var page=await pdf.getPage(i);
+    var c=await page.getTextContent();
+    var t=c.items.map(function(s){return s.str;}).join(' ').trim();
+    pageTexts.push({page:i,text:t,score:scorePageRelevance(t)});
+  }
+  var sorted=pageTexts.slice().sort(function(a,b){return b.score-a.score;});
+  var combined=sorted.map(function(p){return p.text;}).join('\n');
+  return combined.substring(0,3000).trim();
+}
+
+function scorePageRelevance(text){
+  var score=0;
+  if(/\d+[,.]\d+\s*(mg|ng|ug|pg|μg|mmol|mEq|U\/L|g\/dL|%|fL|pg\/mL|uUI|log)/i.test(text)) score+=4;
+  if(/valor[es]?\s+de\s+refer[eê]ncia/i.test(text)) score+=2;
+  if(/hemograma|colesterol|glicose|creatinina|ferritina|tsh|vitamina|testosterona|lactobacillus|gardnerella/i.test(text)) score+=2;
+  if(/resultado|normal|alto|baixo|detectado/i.test(text)) score+=1;
+  if(/conferido por|assinado digitalmente|telefone|cnpj/i.test(text)) score-=1;
+  return score;
+}
+
+async function handleLaudo(input){
+  var file=input.files[0]; if(!file) return;
+  document.getElementById('laudo-name').textContent='Lendo…';
+  document.getElementById('zone-laudo').classList.add('has-file');
+  try{laudoText=await extractPdfText(file);document.getElementById('laudo-name').textContent='✓ '+file.name;}
+  catch(e){document.getElementById('laudo-name').textContent='Erro ao ler PDF';laudoText='';}
+}
+
+async function handleRefs(input){
+  refsTexts=[];
+  var files=Array.from(input.files);
+  document.getElementById('refs-count').textContent='Lendo '+files.length+' arquivo(s)…';
+  document.getElementById('zone-refs').classList.add('has-file');
+  for(var fi=0;fi<files.length;fi++){
+    try{var t=await extractPdfText(files[fi]);refsTexts.push({name:files[fi].name,text:t.substring(0,2000)});}catch(e){}
+  }
+  document.getElementById('refs-count').textContent='✓ '+refsTexts.length+' referência(s) carregada(s)';
+}
+
+function loadAssessmentJSON(input){
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try{
+      const parsed = JSON.parse(e.target.result);
+      assessmentData = parsed.respostas || parsed;
+      const code = assessmentData._code || parsed._codigo || '—';
+      document.getElementById('assessment-code').value = code;
+      showAssessmentStatus('✓ Assessment importado com sucesso — '+getAssessmentSummary(), 'ok');
+    }catch(err){
+      showAssessmentStatus('⚠ Arquivo inválido — use o JSON gerado pelo SmartIA Assessment', 'error');
+    }
+  };
+  reader.readAsText(file);
+}
 </script>
 </head>
 <body>
