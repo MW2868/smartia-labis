@@ -1436,8 +1436,6 @@ const loadingMsgs=[
 ];
 
 async function analyze(){
-  const apiKey=document.getElementById('api-key-input').value.trim();
-  if(!apiKey.startsWith('sk-ant')) return showError('Configure a chave de API da Anthropic antes de continuar.');
   // Support both multi-laudo and legacy single laudo
   var combinedLaudoText = typeof getLaudosContext === 'function' ? getLaudosContext() : laudoText;
   if(!combinedLaudoText && !laudoText) return showError('Adicione pelo menos um laudo em PDF antes de analisar.');
@@ -1457,7 +1455,6 @@ async function analyze(){
       method:'POST',
       headers:{
         'Content-Type':'application/json',
-        'x-api-key':apiKey,
         'anthropic-version':'2023-06-01',
       },
       body:JSON.stringify({
