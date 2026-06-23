@@ -373,13 +373,7 @@ function generateAssessmentLink(){
   var lt=document.getElementById('link-text');
   if(lr) lr.style.display='block';
   if(lt) lt.textContent=fullLink;
-  var msg='Olá'+(patNome?' '+patNome:'')+'! 👋
-
-O Labis Life Diagnostics preparou um breve questionário de saúde.
-
-Acesse: '+fullLink+'
-
-Ao final nos envie o arquivo JSON gerado. 🙏';
+  var msg='Olá'+(patNome?' '+patNome:'')+' \n\nO Labis Life Diagnostics preparou um questionário de saúde.\n\nAcesse: '+fullLink+'\n\nAo final envie o arquivo JSON.';
   var wa=document.getElementById('link-wa');
   var em=document.getElementById('link-email');
   if(wa) wa.href='https://wa.me/?text='+encodeURIComponent(msg);
